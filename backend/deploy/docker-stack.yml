@@ -1,0 +1,220 @@
+version: "3.7"
+
+services:
+
+  ## --------------------------- BANCO DE DADOS --------------------------- ##
+
+  crm_db:
+    image: postgres:17-alpine
+    environment:
+      - POSTGRES_USER=crm
+      - POSTGRES_PASSWORD=BF4z3gWbb49Z2mVI2C6KCQQfWepz9AFDNxL5APHG4JF0VFyIZ9ndE9l4taAZFzP7
+      - POSTGRES_DB=crm_production
+    volumes:
+      - crm_postgres_data:/var/lib/postgresql/data
+    networks:
+      - inoovawebpro
+    deploy:
+      mode: replicated
+      replicas: 1
+      placement:
+        constraints:
+          - node.role == manager
+      resources:
+        limits:
+          cpus: "1"
+          memory: 512M
+
+  ## --------------------------- REDIS --------------------------- ##
+
+  crm_redis:
+    image: redis:7-alpine
+    command: redis-server --requirepass 7FfMlpAqDhaOuKhraF76TqW3AIEz7AGtS9QSjgJzEFelEmidkMztDNVZB6Z3mwGO --appendonly yes
+    volumes:
+      - crm_redis_data:/data
+    networks:
+      - inoovawebpro
+    deploy:
+      mode: replicated
+      replicas: 1
+      placement:
+        constraints:
+          - node.role == manager
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 256M
+
+  ## --------------------------- WHATSAPP (BAILEYS) --------------------------- ##
+
+  crm_baileys:
+    image: ghcr.io/fazer-ai/baileys-api:latest
+    command:
+      - sh
+      - "-c"
+      - "bun manage-api-keys create user inoovaweb2025 && bun start"
+    environment:
+      - NODE_ENV=production
+      - PORT=3025
+      - REDIS_URL=redis://:7FfMlpAqDhaOuKhraF76TqW3AIEz7AGtS9QSjgJzEFelEmidkMztDNVZB6Z3mwGO@crm_redis:6379/1
+      - LOG_LEVEL=warn
+      - BAILEYS_LOG_LEVEL=error
+      - BAILEYS_PROVIDER_DEFAULT_API_KEY=inoovaweb2025
+      - IGNORE_GROUP_MESSAGES=true
+      - IGNORE_STATUS_MESSAGES=true
+    volumes:
+      - crm_baileys_storage:/app/storage
+    networks:
+      - inoovawebpro
+    deploy:
+      mode: replicated
+      replicas: 1
+      placement:
+        constraints:
+          - node.role == manager
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 512M
+
+  ## --------------------------- BACKEND RAILS --------------------------- ##
+
+  crm_backend:
+    image: ghcr.io/balbiss/crm-backend:latest
+    command: >
+      bash -c "until bundle exec rails db:prepare; do echo 'Aguardando banco de dados...'; sleep 5; done && bundle exec rails db:migrate:cache && bundle exec rails db:migrate:queue && bundle exec rails db:migrate:cable && bundle exec rails server -b 0.0.0.0 -p 80"
+    environment:
+      - RAILS_ENV=production
+      - PGHOST=crm_db
+      - PGPORT=5432
+      - PGDATABASE=crm_production
+      - PGUSER=crm
+      - PGPASSWORD=BF4z3gWbb49Z2mVI2C6KCQQfWepz9AFDNxL5APHG4JF0VFyIZ9ndE9l4taAZFzP7
+      - REDIS_URL=redis://:7FfMlpAqDhaOuKhraF76TqW3AIEz7AGtS9QSjgJzEFelEmidkMztDNVZB6Z3mwGO@crm_redis:6379/0
+      - RAILS_MASTER_KEY=ff3afee935c0606bd002c728d250e500
+      - SECRET_KEY_BASE=3309a4a9ddf5cabe32bd550ac6f1731b3c0a2bd4a7d5eae963bedd2240627391e5c19e6c9911131389c8eb9ed9fdbc852808d7f14afb493c340d1fb8b01a0596
+      - API_HOST=https://api-crmchat.visitaia.com.br
+      - BACKEND_URL=https://api-crmchat.visitaia.com.br
+      - FRONTEND_URL=https://crmchat.visitaia.com.br
+      - BAILEYS_API_URL=http://crm_baileys:3025
+      - BAILEYS_API_KEY=inoovaweb2025
+      - APP_NAME=VisitaIA CRM
+      - RAILS_LOG_TO_STDOUT=true
+      - RAILS_SERVE_STATIC_FILES=true
+      - TZ=America/Sao_Paulo
+      - SMTP_USER=suporte@visitaia.com.br
+      - SMTP_PASSWORD=Guirose@123
+      - SMTP_DOMAIN=visitaia.com.br
+      - VAPID_PUBLIC_KEY=BK7wRb9HqPpIJPF3R7roeJd1xUOWwJPBkUW9l3at2xR_YUD7ye5PBNIrBNr6qwinEb940ftwMcVWwJLait11C1M
+      - VAPID_PRIVATE_KEY=hSPQpTeq0I9DcX2taeuC3kXPR5pNrSco_k9y80tHxYs
+    volumes:
+      - crm_rails_storage:/rails/storage
+    networks:
+      - inoovawebpro
+    deploy:
+      mode: replicated
+      replicas: 1
+      placement:
+        constraints:
+          - node.role == manager
+      resources:
+        limits:
+          cpus: "2"
+          memory: 1024M
+      update_config:
+        parallelism: 1
+        delay: 10s
+        order: start-first
+      labels:
+        - traefik.enable=true
+        - traefik.http.routers.crm_backend.rule=Host(`api-crmchat.visitaia.com.br`)
+        - traefik.http.routers.crm_backend.entrypoints=websecure
+        - traefik.http.routers.crm_backend.tls.certresolver=letsencryptresolver
+        - traefik.http.routers.crm_backend.service=crm_backend
+        - traefik.http.services.crm_backend.loadbalancer.server.port=80
+        - traefik.http.services.crm_backend.loadbalancer.passHostHeader=1
+        - traefik.http.services.crm_backend.loadbalancer.responseForwarding.flushInterval=100ms
+
+  ## --------------------------- WORKER (JOBS) --------------------------- ##
+
+  crm_worker:
+    image: ghcr.io/balbiss/crm-backend:latest
+    command: bash -c "sleep 40 && bundle exec rails solid_queue:start"
+    environment:
+      - RAILS_ENV=production
+      - PGHOST=crm_db
+      - PGPORT=5432
+      - PGDATABASE=crm_production
+      - PGUSER=crm
+      - PGPASSWORD=BF4z3gWbb49Z2mVI2C6KCQQfWepz9AFDNxL5APHG4JF0VFyIZ9ndE9l4taAZFzP7
+      - REDIS_URL=redis://:7FfMlpAqDhaOuKhraF76TqW3AIEz7AGtS9QSjgJzEFelEmidkMztDNVZB6Z3mwGO@crm_redis:6379/0
+      - RAILS_MASTER_KEY=ff3afee935c0606bd002c728d250e500
+      - SECRET_KEY_BASE=3309a4a9ddf5cabe32bd550ac6f1731b3c0a2bd4a7d5eae963bedd2240627391e5c19e6c9911131389c8eb9ed9fdbc852808d7f14afb493c340d1fb8b01a0596
+      - BAILEYS_API_URL=http://crm_baileys:3025
+      - BAILEYS_API_KEY=inoovaweb2025
+      - RAILS_LOG_TO_STDOUT=true
+      - TZ=America/Sao_Paulo
+    volumes:
+      - crm_rails_storage:/rails/storage
+    networks:
+      - inoovawebpro
+    deploy:
+      mode: replicated
+      replicas: 1
+      placement:
+        constraints:
+          - node.role == manager
+      resources:
+        limits:
+          cpus: "1"
+          memory: 512M
+
+  ## --------------------------- FRONTEND VUE --------------------------- ##
+
+  crm_frontend:
+    image: ghcr.io/balbiss/crm-frontend:latest
+    environment:
+      - API_URL=https://api-crmchat.visitaia.com.br
+      - APP_NAME=VisitaIA CRM
+      - APP_LOGO_URL=
+      - APP_PRIMARY_COLOR=#1f93ff
+      - APP_ACCENT_COLOR=#8b5cf6
+      - APP_SUPPORT_EMAIL=suporte@visitaia.com.br
+      - APP_FOOTER_TEXT=© 2025 VisitaIA. Todos os direitos reservados.
+    networks:
+      - inoovawebpro
+    deploy:
+      mode: replicated
+      replicas: 1
+      placement:
+        constraints:
+          - node.role == manager
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 256M
+      update_config:
+        parallelism: 1
+        delay: 10s
+        order: start-first
+      labels:
+        - traefik.enable=true
+        - traefik.http.routers.crm_frontend.rule=Host(`crmchat.visitaia.com.br`)
+        - traefik.http.routers.crm_frontend.entrypoints=websecure
+        - traefik.http.routers.crm_frontend.tls.certresolver=letsencryptresolver
+        - traefik.http.routers.crm_frontend.service=crm_frontend
+        - traefik.http.services.crm_frontend.loadbalancer.server.port=80
+        - traefik.http.services.crm_frontend.loadbalancer.passHostHeader=1
+
+## ================================================================
+
+volumes:
+  crm_postgres_data:
+  crm_redis_data:
+  crm_baileys_storage:
+  crm_rails_storage:
+
+networks:
+  inoovawebpro:
+    external: true
+    name: inoovawebpro
