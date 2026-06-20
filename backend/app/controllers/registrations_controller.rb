@@ -7,7 +7,7 @@ class RegistrationsController < ApplicationController
 
       user = User.new(
         account:              account,
-        role:                 :empresa,
+        role:                 :secretaria,
         first_name:           registration_params[:first_name],
         last_name:            registration_params[:last_name],
         email:                registration_params[:email],

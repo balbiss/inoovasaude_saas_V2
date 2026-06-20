@@ -2,7 +2,7 @@ class Admin::AccountsController < Admin::BaseController
   def index
     # Retorna todas as contas com dados do proprietário principal
     accounts = Account.includes(:users).all.map do |account|
-      owner = account.users.find { |u| u.role.to_s == 'empresa' } || account.users.first
+      owner = account.users.find { |u| u.role.to_s == 'secretaria' } || account.users.first
       {
         id: account.id,
         name: account.name,
@@ -23,7 +23,7 @@ class Admin::AccountsController < Admin::BaseController
       
       user_params_to_save = user_params.merge(
         account: account,
-        role: :empresa
+        role: :secretaria
       )
       
       user = User.create!(user_params_to_save)
@@ -36,7 +36,7 @@ class Admin::AccountsController < Admin::BaseController
 
   def update
     account = Account.find(params[:id])
-    owner = account.users.where(role: :empresa).first || account.users.first
+    owner = account.users.where(role: :secretaria).first || account.users.first
 
     ActiveRecord::Base.transaction do
       account.update!(account_params) if account_params.present?
@@ -63,7 +63,7 @@ class Admin::AccountsController < Admin::BaseController
   def block
     account = Account.find(params[:id])
     account.update(subscription_status: 'blocked')
-    render json: { message: 'Acesso da empresa foi bloqueado.' }
+    render json: { message: 'Acesso da secretaria foi bloqueado.' }
   end
 
   private

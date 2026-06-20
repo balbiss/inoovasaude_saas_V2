@@ -54,7 +54,7 @@ class BillingController < ApplicationController
   private
 
   def authorize_empresa!
-    unless current_user.admin? || current_user.empresa?
+    unless current_user.admin? || current_user.secretaria?
       render json: { error: 'Unauthorized' }, status: :forbidden
     end
   end

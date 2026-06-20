@@ -7,9 +7,9 @@ class ConversationsController < ApplicationController
 
     base = current_user.account.conversations
 
-    # Corretores (atendente) só veem conversas atribuídas a eles
+    # Médicos só veem conversas atribuídas a eles
     # Não mostrar não-atribuídas: evita que fujam da fila do rodízio
-    if current_user.atendente?
+    if current_user.medico?
       base = base.where(user_id: current_user.id)
     end
 
@@ -154,15 +154,15 @@ class ConversationsController < ApplicationController
     recent_messages = conversation.messages.order(created_at: :asc).last(30)
     
     chat_history = recent_messages.map do |msg|
-      "#{msg.sender_type == 'Contact' ? 'Cliente' : 'Corretor/IA'}: #{msg.text || '[Mídia]'}"
+      "#{msg.sender_type == 'Contact' ? 'Paciente' : 'Secretária/IA'}: #{msg.text || '[Mídia]'}"
     end.join("\n")
 
     system_prompt = <<~PROMPT
-      Você é um assistente de imobiliária. Seu objetivo é ler o histórico da conversa abaixo e gerar um resumo curto, direto e objetivo do atendimento.
+      Você é um assistente de clínica de saúde. Seu objetivo é ler o histórico da conversa abaixo e gerar um resumo curto, direto e objetivo do atendimento.
       Destaque as principais informações como:
-      - O que o cliente busca (imóvel/perfil)
-      - Faixa de valor
-      - Região de interesse
+      - Motivo do contato (consulta/especialidade)
+      - Datas e horários discutidos
+      - Plano de saúde informado
       - Próximos passos combinados
       Não crie informações que não estejam no texto. Retorne apenas o resumo.
     PROMPT
@@ -197,14 +197,14 @@ class ConversationsController < ApplicationController
 
     contact = conversation.contact
     messages = conversation.messages.order(:created_at)
-    account_name = current_user.account.name rescue 'Imobiliária'
+    account_name = current_user.account.name rescue 'Clínica'
 
     lines = []
     lines << "=" * 60
     lines << "TRANSCRIÇÃO DA CONVERSA"
     lines << "=" * 60
-    lines << "Imobiliária: #{account_name}"
-    lines << "Contato: #{contact.name.presence || contact.phone}"
+    lines << "Clínica: #{account_name}"
+    lines << "Paciente: #{contact.name.presence || contact.phone}"
     lines << "Telefone: #{contact.phone}"
     lines << "Atendente: #{conversation.user&.first_name || 'Não atribuído'}"
     lines << "Data: #{I18n.l(Time.current, format: '%d/%m/%Y %H:%M')}"
@@ -214,7 +214,7 @@ class ConversationsController < ApplicationController
     messages.each do |msg|
       next if msg.text.blank? && msg.attachment.blank?
       time   = msg.created_at.strftime('%d/%m/%Y %H:%M')
-      author = msg.sender_type == 'Contact' ? (contact.name.presence || 'Lead') : 'Atendente/IA'
+      author = msg.sender_type == 'Contact' ? (contact.name.presence || 'Paciente') : 'Atendente/IA'
       text   = msg.text.presence || '[Anexo]'
       lines << "[#{time}] #{author}: #{text}"
     end
@@ -223,6 +223,8 @@ class ConversationsController < ApplicationController
     lines << "=" * 60
     lines << "Fim da transcrição — #{account_name}"
     lines << "=" * 60
+
+
 
     filename = "transcricao_#{contact.phone}_#{Date.current}.txt"
     send_data lines.join("\n"),
@@ -258,10 +260,13 @@ class ConversationsController < ApplicationController
         cpf: conv.contact.cpf,
         birth_date: conv.contact.birth_date,
         profession: conv.contact.profession,
-        gross_income: conv.contact.gross_income,
-        down_payment: conv.contact.down_payment,
-        fgts_balance: conv.contact.fgts_balance,
-        dependents: conv.contact.dependents,
+        blood_type: conv.contact.blood_type,
+        allergies: conv.contact.allergies,
+        health_notes: conv.contact.health_notes,
+        health_plan: conv.contact.health_plan,
+        health_plan_number: conv.contact.health_plan_number,
+        medical_history: conv.contact.medical_history,
+        funnel_stage: conv.contact.funnel_stage,
         bio: conv.contact.bio,
         company_name: conv.contact.company_name,
         country: conv.contact.country,

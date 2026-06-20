@@ -14,7 +14,7 @@ class Users::RegistrationsController < Devise::RegistrationsController
       )
 
       resource.account = @account
-      resource.role = :empresa # O primeiro usuário é o dono da empresa
+      resource.role = :secretaria # O primeiro usuário é o dono da clínica
       resource.save!
     end
 
