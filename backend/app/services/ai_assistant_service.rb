@@ -12,41 +12,27 @@ class AiAssistantService
   def self.transcribe_audio(media_data, filename, inbox)
     api_key = GlobalSetting.fetch('openai_api_key').presence || ENV['OPENAI_API_KEY']
     client = OpenAI::Client.new(access_token: api_key)
-    
-    # Precisamos criar um arquivo temporário para enviar pro multipart faraday da OpenAI
+
     tempfile = Tempfile.new([filename.split('.').first, ".#{filename.split('.').last}"])
     tempfile.binmode
     tempfile.write(media_data)
     tempfile.rewind
 
     response = client.audio.transcribe(
-      parameters: {
-        model: "whisper-1",
-        file: File.open(tempfile.path, "rb")
-      }
+      parameters: { model: "whisper-1", file: File.open(tempfile.path, "rb") }
     )
-    
     tempfile.close
     tempfile.unlink
-    
     response["text"]
   end
 
   def process_message
-    # 1. Recuperar histórico da conversa
     messages = build_message_history
 
-    # 2. Definir o comportamento da IA (System Prompt)
-    system_prompt = {
-      role: "system",
-      content: build_system_prompt
-    }
-
-    # 3. Enviar para a OpenAI com Tools
     response = @client.chat(
       parameters: {
         model: "gpt-4o",
-        messages: [system_prompt] + messages,
+        messages: [{ role: "system", content: build_system_prompt }] + messages,
         temperature: @inbox.ai_temperature || 0.7,
         tools: defined_tools,
         tool_choice: "auto"
@@ -59,249 +45,63 @@ class AiAssistantService
 
   private
 
+  # ── Infraestrutura (não muda) ─────────────────────────────────────────────
+
   def split_into_messages(text)
-    return [text] if text.length < 80 # Não divide mensagens curtas
-    
-    prompt = <<~PROMPT
-      Você é um agente que simula o comportamento humano ao enviar mensagens no WhatsApp. 
-      Seu objetivo é pegar uma mensagem longa recebida como entrada e dividi-la em múltiplas mensagens menores — sem alterar as palavras do conteúdo original — apenas separando em partes naturais, como um humano faria ao digitar e enviar aos poucos.
-      
+    return [text] if text.length < 80
+
+    prompt = <<~P
+      Você é um agente que simula o comportamento humano ao enviar mensagens no WhatsApp.
+      Seu objetivo é pegar uma mensagem longa recebida como entrada e dividi-la em múltiplas mensagens menores — sem alterar as palavras — apenas separando em partes naturais.
       REGRAS:
-      - Não reescreva o conteúdo. Apenas separe em mensagens menores respeitando a pontuação e pausas naturais.
-      - As divisões devem parecer naturais.
-      - Sempre retorne como um JSON com o campo "mensagens" que é um array de strings.
-      - Remova vírgulas e pontos finais no final das mensagens, quando soar mais natural para o chat.
-      - Tente manter cada mensagem entre 1 a 4 frases no máximo.
-      - NUNCA QUEBRE A MENSAGEM EM MAIS DE 5 PARTES.
-      - Mantenha itens de lista na mesma mensagem. NUNCA quebre listas em múltiplas mensagens.
-    PROMPT
-    
+      - Não reescreva o conteúdo. Apenas separe respeitando pontuação e pausas naturais.
+      - Sempre retorne como JSON com campo "mensagens" (array de strings).
+      - Remova vírgulas e pontos finais no fim das mensagens quando soar mais natural.
+      - Mantenha cada mensagem entre 1 a 4 frases. NUNCA quebre em mais de 5 partes.
+      - Mantenha itens de lista na mesma mensagem.
+    P
+
     response = @client.chat(
       parameters: {
         model: "gpt-4o-mini",
         response_format: { type: "json_object" },
-        messages: [
-          { role: "system", content: prompt },
-          { role: "user", content: text }
-        ],
+        messages: [{ role: "system", content: prompt }, { role: "user", content: text }],
         temperature: 0.3
       }
     )
-    
     json_str = response.dig("choices", 0, "message", "content")
     JSON.parse(json_str)["mensagens"] || [text]
   rescue => e
-    Rails.logger.error("Erro ao dividir mensagem em blocos: #{e.message}")
+    Rails.logger.error("split_into_messages: #{e.message}")
     [text]
   end
 
   def build_message_history
-    recent_messages = @conversation.messages.order(created_at: :asc).last(100)
-    
-    recent_messages.map do |msg|
+    @conversation.messages.order(created_at: :asc).last(100).map do |msg|
       role = msg.sender_type == 'Contact' ? 'user' : 'assistant'
       { role: role, content: msg.text || "📎 [Mídia/Anexo]" }
     end
   end
 
-  def build_system_prompt
-    base_prompt = @inbox.ai_prompt.presence || "Você é uma assistente virtual prestativa."
-    
-    current_time = Time.current.in_time_zone('America/Sao_Paulo')
-    dias_semana = %w[Domingo Segunda-feira Terça-feira Quarta-feira Quinta-feira Sexta-feira Sábado]
-    dia_semana = dias_semana[current_time.wday]
-    date_info = "Hoje é #{dia_semana}, #{current_time.strftime('%d/%m/%Y')}. O horário atual é #{current_time.strftime('%H:%M')}."
-    
-    contact_name = @conversation.contact.name.presence || "Cliente (nome desconhecido)"
-    contact_phone = @conversation.contact.phone.presence || "Telefone desconhecido"
-    contact_info = "Você está conversando com: #{contact_name}. Número do WhatsApp: #{contact_phone}."
-    
-    labels_instruction = "\n[ETIQUETAS]: Após concluir a ação principal da mensagem, você pode usar 'apply_label' para classificar o lead se tiver certeza da situação: 'lead_quente' = interesse real e urgência; 'lead_frio' = só pesquisando; 'desqualificado' = fora do perfil; 'com_atendente' = quer falar com humano. Nunca interrompa outra ação para apenas etiquetar."
-    routing_instruction = "\n[ROTEAMENTO DE DEPARTAMENTO]: Se o cliente mencionar assuntos que NÃO são de venda/locação de imóveis — como problemas no imóvel (vazamento, elétrica, infiltração), cobranças, boletos, contratos, segunda via de recibo — use imediatamente a ferramenta 'route_to_department' para encaminhar ao departamento correto: 'suporte' = problemas/manutenção no imóvel; 'financeiro' = cobranças, boletos, segunda via; 'manutencao' = reparos e serviços técnicos. Avise o cliente que está transferindo."
-
-    prompt = "#{base_prompt}\nSeu nome é #{@inbox.ai_name || 'Assistente'}. Você atende clientes de uma imobiliária. Seja muito humana, empática e natural.\n[CONTEXTO TEMPORAL]: #{date_info} (Sempre use essa data e hora reais como base).\n[DADOS DO CLIENTE]: #{contact_info}#{labels_instruction}#{routing_instruction}"
-    
-    # Contexto extra injetado por integrações (portais, webhooks) — sem exigir config manual
-    if @extra_context.present?
-      prompt += "\n\n[CONTEXTO DA INTEGRAÇÃO]: #{@extra_context}"
-    end
-
-    status = @conversation.contact.status || 'lead'
-
-    case status
-    when 'lead'
-      prompt += "\n[FASE DE PRÉ-VENDA (SDR)]: Você está atuando como Recepcionista/SDR. O lead acabou de chegar. Seu ÚNICO objetivo é descobrir o que o cliente procura (bairro, valor, quartos) ou a urgência dele. NUNCA tente vender imóveis ou agendar visitas. Apenas acolha, engaje e qualifique. Sempre que entender o que ele procura, use a ferramenta 'qualify_lead' para atualizar a intenção no CRM e avance o lead para 'visit' usando a ferramenta 'move_kanban_card'."
-    when 'visit', 'atendimento'
-      prompt += "\n[FASE DE ATENDIMENTO/VENDAS]: Você está atuando como Corretora Digital. O lead já foi qualificado. Seu foco agora é usar a busca de imóveis ('search_properties'), apresentar opções de forma encantadora e agendar visitas ('create_appointment').\n[REGRAS DE APRESENTAÇÃO DE IMÓVEIS]: Quando apresentar um imóvel, NUNCA use formato de lista robótica. Descreva o imóvel de forma fluida, conversacional e vendedora no meio do texto, como um bom corretor faria."
-    when 'proposal', 'won'
-      prompt += "\n[FASE DE FECHAMENTO]: Você está atuando no pós-visita/negociação. Foque em tirar dúvidas documentais e financeiras. Não oferte novos imóveis para não desfocar a venda."
-    else
-      # Default fallback
-      prompt += "\n[QUALIFICAÇÃO]: Sempre que entender o que o cliente procura, use a ferramenta 'qualify_lead'."
-    end
-    
-    prompt
-  end
-
-  def defined_tools
-    status = @conversation.contact.status || 'lead'
-    
-    qualify_tool = {
-      type: "function",
-      function: {
-        name: "qualify_lead",
-        description: "Qualifica o lead, atualizando sua temperatura de compra e detalhando sua real intenção/necessidade.",
-        parameters: {
-          type: "object",
-          properties: {
-            temperature: { type: "string", enum: ["Frio", "Morno", "Quente"], description: "Temperatura do lead (Frio = só pesquisando, Morno = interessado, Quente = quer comprar logo)." },
-            intention: { type: "string", description: "Descrição detalhada do que o cliente quer (ex: Busca apartamento de 2 quartos na Cidade Nova, até R$ 500 mil)." }
-          },
-          required: ["temperature", "intention"]
-        }
-      }
-    }
-    
-    search_tool = {
-      type: "function",
-      function: {
-        name: "search_properties",
-        description: "Pesquisa imóveis no banco de dados da imobiliária com base em critérios.",
-        parameters: {
-          type: "object",
-          properties: {
-            neighborhood: { type: "string", description: "Bairro desejado" },
-            bedrooms: { type: "integer", description: "Número de quartos" },
-            max_price: { type: "integer", description: "Preço máximo em reais" }
-          }
-        }
-      }
-    }
-    
-    appointment_tool = {
-      type: "function",
-      function: {
-        name: "create_appointment",
-        description: "Agenda uma visita para o lead em um imóvel avulso (Property). Use o ID numérico retornado por search_properties. Não use IDs de condomínios.",
-        parameters: {
-          type: "object",
-          properties: {
-            property_id: { type: "integer", description: "ID numérico do imóvel avulso (retornado por search_properties como 'ID X:')" },
-            date: { type: "string", description: "Data desejada no formato YYYY-MM-DD (ex: 2026-06-19)" },
-            time: { type: "string", description: "Hora desejada no formato HH:MM (ex: 10:00). Sempre informe o horário combinado com o cliente." }
-          },
-          required: ["property_id", "date", "time"]
-        }
-      }
-    }
-    
-    photos_tool = {
-      type: "function",
-      function: {
-        name: "send_property_photos",
-        description: "Envia as fotos de um imóvel específico para o cliente no WhatsApp.",
-        parameters: {
-          type: "object",
-          properties: {
-            property_id: { type: "integer", description: "ID do imóvel avulso (Property)" }
-          },
-          required: ["property_id"]
-        }
-      }
-    }
-    
-    kanban_tool = {
-      type: "function",
-      function: {
-        name: "move_kanban_card",
-        description: "Atualiza o estágio do cliente no funil de vendas (Kanban).",
-        parameters: {
-          type: "object",
-          properties: {
-            stage: { type: "string", enum: ["lead", "visit", "proposal", "won"], description: "Novo estágio do lead. Valores: 'lead' (Novos Leads), 'visit' (Visita Agendada), 'proposal' (Proposta Feita), 'won' (Negócio Fechado)" }
-          },
-          required: ["stage"]
-        }
-      }
-    }
-
-    route_tool = {
-      type: "function",
-      function: {
-        name: "route_to_department",
-        description: "Encaminha a conversa para um agente do departamento correto (suporte, financeiro, manutencao). Use quando o assunto não é de venda/locação.",
-        parameters: {
-          type: "object",
-          properties: {
-            department: { type: "string", enum: ["suporte", "financeiro", "manutencao"], description: "Departamento de destino" },
-            reason:     { type: "string", description: "Motivo do encaminhamento (ex: 'cliente relata vazamento')" }
-          },
-          required: ["department"]
-        }
-      }
-    }
-
-    label_tool = {
-      type: "function",
-      function: {
-        name: "apply_label",
-        description: "Aplica uma etiqueta na conversa para identificar a situação do lead. Use SEMPRE que identificar claramente a situação. Regras: 'lead_quente' = interesse real e urgência; 'lead_frio' = só pesquisando; 'desqualificado' = fora do perfil; 'com_atendente' = use quando o lead pede para falar com um humano ou a situação exige atendimento especializado (ex: negociação de proposta complexa, reclamação, solicitação explícita). Não use 'agente_off' — ela é aplicada automaticamente.",
-        parameters: {
-          type: "object",
-          properties: {
-            label: {
-              type: "string",
-              enum: ["lead_quente", "lead_frio", "desqualificado", "com_atendente"],
-              description: "Etiqueta a aplicar na conversa."
-            },
-            reason: {
-              type: "string",
-              description: "Motivo breve pelo qual está aplicando esta etiqueta."
-            }
-          },
-          required: ["label"]
-        }
-      }
-    }
-
-    case status
-    when 'lead'
-      [qualify_tool, kanban_tool, label_tool, route_tool]
-    when 'visit', 'atendimento'
-      [search_tool, photos_tool, appointment_tool, kanban_tool, label_tool, route_tool]
-    when 'proposal', 'won'
-      [kanban_tool, label_tool, route_tool]
-    else
-      [qualify_tool, search_tool, photos_tool, appointment_tool, kanban_tool, label_tool, route_tool]
-    end
-  end
-
   def handle_response(response, messages)
-    max_rounds = 4
+    max_rounds = 5
     current_response = response
 
     max_rounds.times do
       choice = current_response.dig("choices", 0, "message")
+      return choice["content"] unless choice["tool_calls"]
 
-      unless choice["tool_calls"]
-        return choice["content"]
+      all_results = choice["tool_calls"].map do |tc|
+        fn   = tc.dig("function", "name")
+        args = JSON.parse(tc.dig("function", "arguments"))
+        { tool_call: tc, name: fn, result: execute_tool(fn, args).to_s }
       end
 
-      # Processa todos os tool_calls desta rodada
-      all_tool_results = choice["tool_calls"].map do |tool_call|
-        function_name = tool_call.dig("function", "name")
-        arguments = JSON.parse(tool_call.dig("function", "arguments"))
-        result = execute_tool(function_name, arguments)
-        { tool_call: tool_call, name: function_name, result: result.to_s }
-      end
-
-      # Adiciona a chamada do assistente e todos os resultados ao histórico
       messages << { role: "assistant", content: nil, tool_calls: choice["tool_calls"] }
-      all_tool_results.each do |tr|
-        messages << { role: "tool", tool_call_id: tr[:tool_call]["id"], name: tr[:name], content: tr[:result] }
+      all_results.each do |r|
+        messages << { role: "tool", tool_call_id: r[:tool_call]["id"], name: r[:name], content: r[:result] }
       end
 
-      # Nova chamada com tools disponíveis (para permitir encadeamento)
       current_response = @client.chat(
         parameters: {
           model: "gpt-4o",
@@ -313,113 +113,395 @@ class AiAssistantService
       )
     end
 
-    # Fallback: última resposta se atingiu o limite de rodadas
     current_response.dig("choices", 0, "message", "content")
   end
 
+  def pause_ai_permanently
+    jid = @conversation.contact.jid.presence || @conversation.contact.phone
+    return unless jid
+
+    Rails.cache.write("ai_paused_#{@inbox.id}_#{jid}", Time.current.to_i)
+
+    tag = @conversation.account.tags.find_or_create_by!(name: 'agente_off') { |t| t.color = '#f97316' }
+    @conversation.tags << tag unless @conversation.tags.include?(tag)
+
+    ActionCable.server.broadcast('conversations_channel', {
+      event: 'conversation_tags_updated',
+      conversation_id: @conversation.id,
+      tags: @conversation.reload.tags.map { |t| { id: t.id, name: t.name, color: t.color } }
+    })
+  rescue => e
+    Rails.logger.error("pause_ai_permanently: #{e.message}")
+  end
+
+  # ── Prompt do sistema ─────────────────────────────────────────────────────
+
+  def build_system_prompt
+    base_prompt = @inbox.ai_prompt.presence || "Você é uma recepcionista virtual prestativa e empática."
+
+    tz   = 'America/Sao_Paulo'
+    now  = Time.current.in_time_zone(tz)
+    dias = %w[Domingo Segunda-feira Terça-feira Quarta-feira Quinta-feira Sexta-feira Sábado]
+    date_info = "Hoje é #{dias[now.wday]}, #{now.strftime('%d/%m/%Y')}. Horário atual: #{now.strftime('%H:%M')}."
+
+    contact    = @conversation.contact
+    is_new     = contact.name.blank? || contact.name == contact.phone
+    patient_info = if is_new
+      "NOVO paciente (sem cadastro). Telefone: #{contact.phone}."
+    else
+      info  = "Paciente: #{contact.name}. Telefone: #{contact.phone}."
+      info += " CPF: #{contact.cpf}." if contact.cpf.present?
+      info += " Convênio: #{contact.health_plan}." if contact.health_plan.present?
+      info += " Plano atual no funil: #{contact.funnel_stage}." if contact.funnel_stage.present?
+      info
+    end
+
+    extra = @extra_context.present? ? "\n\n[CONTEXTO EXTRA]: #{@extra_context}" : ""
+
+    <<~PROMPT
+      #{base_prompt}
+      Seu nome é #{@inbox.ai_name.presence || 'Ana'}. Seja sempre humana, empática e natural — nunca robótica.
+
+      [DATA E HORA]: #{date_info}
+      [PACIENTE]: #{patient_info}#{extra}
+
+      ═══ FLUXO — NOVO PACIENTE (sem nome cadastrado) ═══
+      1. Cumprimente gentilmente e se apresente.
+      2. Pergunte o nome completo.
+      3. Pergunte o CPF.
+      4. Pergunte: tem convênio ou será particular?
+         • Se convênio: qual o plano? (Número da carteirinha é OPCIONAL — NÃO insista.)
+      5. Chame save_contact_data com os dados coletados.
+      6. Avance para o fluxo de agendamento.
+
+      ═══ FLUXO — AGENDAMENTO ═══
+      1. Chame list_professionals_and_services para ver opções disponíveis.
+      2. Apresente profissionais e serviços de forma natural (não em lista robótica).
+      3. Pergunte qual profissional/serviço o paciente prefere.
+         • Se o paciente tiver convênio, verifique se o profissional aceita o plano.
+         • Se não aceitar, informe e ofereça alternativas ou consulta particular.
+      4. Pergunte a data desejada.
+      5. SEMPRE chame check_availability(professional_id, date). NUNCA invente horários.
+      6. Se não houver horários no dia, sugira outro dia próximo.
+      7. Apresente os horários disponíveis de forma conversacional.
+      8. Confirme todos os dados antes de agendar:
+         "Posso confirmar: [nome] com [profissional] no dia [data] às [hora], certo?"
+      9. Após confirmação do paciente, chame book_appointment.
+
+      ═══ REGRA DE RETORNO ═══
+      • Retorno só é permitido se o paciente tiver comparecido a uma consulta anterior.
+      • O retorno deve ser agendado dentro do prazo definido pela clínica (padrão: 30 dias).
+      • book_appointment retornará um erro claro se o retorno não for permitido.
+      • Nesse caso, oriente o paciente a agendar uma consulta regular.
+
+      ═══ CONSULTA / CANCELAMENTO ═══
+      • "Quando é minha consulta?" → peça o CPF → chame find_patient_appointments.
+      • "Quero cancelar" → confirme os dados da consulta → chame cancel_appointment.
+        Após cancelar, sempre ofereça remarcar.
+
+      ═══ ENCERRAMENTO ═══
+      • Após agendar com sucesso: aplique a etiqueta "consulta_agendada" com apply_label.
+        Isso pausará a IA automaticamente.
+      • Se o paciente pedir para falar com uma pessoa: aplique "com_atendente" e transfira.
+
+      REGRAS ABSOLUTAS:
+      ✗ NUNCA invente horários disponíveis. Use sempre check_availability antes.
+      ✗ NUNCA agende sem confirmação explícita do paciente.
+      ✗ NUNCA pergunte número de carteirinha de forma obrigatória.
+    PROMPT
+  end
+
+  # ── Definição das ferramentas ─────────────────────────────────────────────
+
+  def defined_tools
+    [
+      {
+        type: "function",
+        function: {
+          name: "save_contact_data",
+          description: "Salva ou atualiza os dados cadastrais do paciente (nome, CPF, convênio). Chame assim que coletar as informações.",
+          parameters: {
+            type: "object",
+            properties: {
+              name:               { type: "string", description: "Nome completo do paciente" },
+              cpf:                { type: "string", description: "CPF (apenas dígitos ou formatado)" },
+              health_plan:        { type: "string", description: "Nome do convênio (ex: 'Unimed') ou 'particular'" },
+              health_plan_number: { type: "string", description: "Número da carteirinha (opcional)" }
+            },
+            required: ["name"]
+          }
+        }
+      },
+      {
+        type: "function",
+        function: {
+          name: "list_professionals_and_services",
+          description: "Lista os profissionais disponíveis na clínica (com especialidade e planos aceitos) e os serviços cadastrados.",
+          parameters: { type: "object", properties: {} }
+        }
+      },
+      {
+        type: "function",
+        function: {
+          name: "check_availability",
+          description: "Verifica os horários disponíveis de um profissional em uma data específica. SEMPRE chame antes de oferecer horários.",
+          parameters: {
+            type: "object",
+            properties: {
+              professional_id: { type: "integer", description: "ID do profissional" },
+              date:            { type: "string",  description: "Data no formato YYYY-MM-DD" }
+            },
+            required: ["professional_id", "date"]
+          }
+        }
+      },
+      {
+        type: "function",
+        function: {
+          name: "book_appointment",
+          description: "Agenda uma consulta após o paciente confirmar todos os dados. Valida conflitos e regra de retorno automaticamente.",
+          parameters: {
+            type: "object",
+            properties: {
+              professional_id:   { type: "integer", description: "ID do profissional" },
+              service_id:        { type: "integer", description: "ID do serviço (opcional)" },
+              date:              { type: "string",  description: "Data no formato YYYY-MM-DD" },
+              start_time:        { type: "string",  description: "Horário de início no formato HH:MM" },
+              status:            { type: "string",  enum: ["agendado", "retorno"], description: "Use 'retorno' quando for retorno. Padrão: 'agendado'." },
+              consultation_type: { type: "string",  enum: ["presencial", "online"], description: "Padrão: presencial" }
+            },
+            required: ["professional_id", "date", "start_time"]
+          }
+        }
+      },
+      {
+        type: "function",
+        function: {
+          name: "find_patient_appointments",
+          description: "Busca as próximas consultas de um paciente pelo CPF. Use quando o paciente perguntar quando é sua consulta.",
+          parameters: {
+            type: "object",
+            properties: {
+              cpf: { type: "string", description: "CPF do paciente" }
+            },
+            required: ["cpf"]
+          }
+        }
+      },
+      {
+        type: "function",
+        function: {
+          name: "cancel_appointment",
+          description: "Cancela uma consulta existente e envia notificação WhatsApp ao paciente.",
+          parameters: {
+            type: "object",
+            properties: {
+              appointment_id: { type: "integer", description: "ID da consulta a cancelar" }
+            },
+            required: ["appointment_id"]
+          }
+        }
+      },
+      {
+        type: "function",
+        function: {
+          name: "apply_label",
+          description: "Aplica uma etiqueta na conversa. Use 'consulta_agendada' após agendar (pausa a IA). Use 'com_atendente' quando precisar transferir para humano.",
+          parameters: {
+            type: "object",
+            properties: {
+              label:  { type: "string", enum: ["consulta_agendada", "com_atendente", "paciente_quente", "paciente_frio", "sem_agenda"] },
+              reason: { type: "string", description: "Motivo breve" }
+            },
+            required: ["label"]
+          }
+        }
+      },
+      {
+        type: "function",
+        function: {
+          name: "transfer_to_human",
+          description: "Transfere a conversa para uma secretária/atendente humana quando necessário.",
+          parameters: {
+            type: "object",
+            properties: {
+              reason: { type: "string", description: "Motivo da transferência" }
+            },
+            required: ["reason"]
+          }
+        }
+      }
+    ]
+  end
+
+  # ── Execução das ferramentas ──────────────────────────────────────────────
+
   def execute_tool(name, args)
-    account_id = @conversation.account_id
+    account = @conversation.account
     contact = @conversation.contact
 
     case name
-    when "search_properties"
-      # Busca em Imóveis Avulsos (Properties) — apenas disponíveis
-      prop_query = Property.where(account_id: account_id, status: 'Disponível')
-      prop_query = prop_query.where("neighborhood ILIKE ?", "%#{args['neighborhood']}%") if args['neighborhood'].present?
-      prop_query = prop_query.where("bedrooms >= ?", args['bedrooms']) if args['bedrooms'].present?
-      prop_query = prop_query.where("price <= ?", args['max_price']) if args['max_price'].present?
-      prop_results = prop_query.limit(3)
-      prop_results.each { |p| p.increment!(:search_count) rescue nil }
 
-      # Busca em Condomínios (Condominia) — exclui esgotados
-      condo_query = Condominium.where(account_id: account_id).where.not(status: 'Esgotado')
-      condo_query = condo_query.where("neighborhood ILIKE ?", "%#{args['neighborhood']}%") if args['neighborhood'].present?
-      condo_query = condo_query.where("min_price <= ?", args['max_price']) if args['max_price'].present?
-      condo_results = condo_query.limit(3)
+    when "save_contact_data"
+      attrs = {}
+      attrs[:name]               = args['name'].strip            if args['name'].present?
+      attrs[:cpf]                = args['cpf'].gsub(/\D/, '')    if args['cpf'].present?
+      attrs[:health_plan]        = args['health_plan']           if args['health_plan'].present?
+      attrs[:health_plan_number] = args['health_plan_number']    if args['health_plan_number'].present?
+      # Separa first_name / last_name a partir do nome completo
+      if attrs[:name].present?
+        parts = attrs[:name].split(' ', 2)
+        attrs[:first_name] = parts[0]
+        attrs[:last_name]  = parts[1] || ''
+      end
+      contact.update!(attrs)
+      "Dados do paciente salvos: #{attrs.map { |k, v| "#{k}=#{v}" }.join(', ')}."
 
-      if prop_results.empty? && condo_results.empty?
-        "Nenhum imóvel disponível encontrado com esses critérios."
+    when "list_professionals_and_services"
+      professionals = account.professionals.where(status: 'active').order(:name)
+      services      = account.services.where(status: 'active').order(:name)
+
+      prof_list = professionals.map do |p|
+        plans = Array(p.accepted_plans || [])
+        particular = p.accepts_particular != false
+        plan_str = [
+          particular ? 'Particular' : nil,
+          plans.presence&.join(', ')
+        ].compact.join(' | ')
+        "• ID #{p.id}: #{p.name} (#{p.specialty}) — Aceita: #{plan_str.presence || 'Consultar clínica'}"
+      end
+
+      svc_list = services.map do |s|
+        price_str = s.price.present? ? " — R$ #{s.price}" : ""
+        dur_str   = s.duration_minutes.present? ? " (#{s.duration_minutes} min)" : ""
+        "• ID #{s.id}: #{s.name}#{dur_str}#{price_str}"
+      end
+
+      [
+        "Profissionais disponíveis:", prof_list.presence&.join("\n") || "Nenhum profissional ativo.",
+        "\nServiços disponíveis:", svc_list.presence&.join("\n") || "Nenhum serviço ativo."
+      ].join("\n")
+
+    when "check_availability"
+      professional = account.professionals.find_by(id: args['professional_id'])
+      return "Profissional não encontrado." unless professional
+
+      date = Date.parse(args['date'].to_s) rescue Date.current
+      slots = AgentAvailabilityService.new(professional).available_slots(date)
+
+      if slots.empty?
+        "Nenhum horário disponível para #{professional.name} em #{date.strftime('%d/%m/%Y')}. O profissional pode não atender nesse dia ou todos os horários já estão ocupados."
       else
-        response_texts = []
-        if prop_results.any?
-          response_texts << "Imóveis Avulsos:"
-          response_texts += prop_results.map do |p|
-            has_photos = p.photos.attached?
-            desc = "- ID #{p.id}: #{p.title || p.property_type || 'Imóvel'} em #{p.neighborhood}, #{p.city}. "
-            desc += "Status: #{p.status || 'Disponível'}. "
-            desc += "Quartos: #{p.bedrooms || 0} (Suítes: #{p.suites || 0}). Banheiros: #{p.bathrooms || 0}. Vagas: #{p.parking_spots || 0}. "
-            desc += "Área: #{p.built_area || p.total_area}m². "
-            desc += "Preço: R$ #{p.price || 0}. Transação: #{p.listing_type}. "
-            desc += "Descrição: #{p.description&.truncate(300) || 'Sem descrição.'}. "
-            desc += has_photos ? "[TEM_FOTOS: SIM — você pode oferecer enviar fotos usando send_property_photos]" : "[TEM_FOTOS: NÃO — NÃO ofereça enviar fotos deste imóvel]"
-            desc
-          end
-        end
-
-        if condo_results.any?
-          response_texts << "Condomínios/Lançamentos:"
-          response_texts += condo_results.map do |c|
-            desc = "- ID #{c.id}: #{c.name} em #{c.neighborhood}, #{c.city}. "
-            desc += "Status: #{c.status || 'Disponível'}. "
-            desc += "Preço: R$ #{c.min_price || 0} a R$ #{c.max_price || 0}. "
-            desc += "Lazer: #{c.leisure_features&.truncate(150) || 'Não informado'}. "
-            desc += "Estágio de Obra: #{c.construction_progress || 'Não informado'}. "
-            desc
-          end
-        end
-
-        response_texts.join("\n")
+        "Horários disponíveis para #{professional.name} em #{date.strftime('%d/%m/%Y')}: #{slots.join(', ')}."
       end
 
-    when "create_appointment"
-      visit_time = args['time'].presence || '10:00'
-      end_time_str = begin
-        (Time.parse(visit_time) + 1.hour).strftime('%H:%M')
+    when "book_appointment"
+      professional = account.professionals.find_by(id: args['professional_id'])
+      return "❌ Profissional não encontrado." unless professional
+
+      status_val        = args['status'].presence&.to_s.downcase
+      status_val        = 'agendado' unless %w[agendado retorno].include?(status_val)
+      consultation_type = args['consultation_type'].presence || 'presencial'
+      date_str          = args['date'].to_s
+      start_time        = args['start_time'].to_s
+
+      # Validação de duplo agendamento
+      if account.block_double_booking != false
+        pending = account.appointments
+          .where(contact_id: contact.id, status: %w[agendado confirmado])
+          .exists?
+        if pending
+          return "❌ Este paciente já possui uma consulta pendente (agendada ou confirmada). Informe-o que é necessário cancelar ou aguardar a conclusão da consulta atual antes de agendar uma nova."
+        end
+      end
+
+      # Validação de retorno
+      if status_val == 'retorno'
+        retorno_days = (account.retorno_days || 30).to_i
+        last_done    = account.appointments
+          .where(contact_id: contact.id, status: 'compareceu')
+          .order(appointment_date: :desc)
+          .first
+
+        if last_done.nil?
+          return "❌ Retorno não permitido: o paciente não possui consulta anterior registrada como realizada (compareceu). O retorno só pode ser agendado após uma consulta concluída."
+        end
+
+        days_since = (Date.current - last_done.appointment_date.to_date).to_i
+        if days_since > retorno_days
+          deadline = (last_done.appointment_date.to_date + retorno_days.days).strftime('%d/%m/%Y')
+          return "❌ Prazo de retorno expirado. A última consulta foi em #{last_done.appointment_date.strftime('%d/%m/%Y')} e o prazo de #{retorno_days} dias encerrou em #{deadline}. Oriente o paciente a agendar uma consulta regular."
+        end
+      end
+
+      # Calcula fim da consulta
+      duration = professional.consultation_duration || 30
+      end_time = begin
+        (Time.parse(start_time) + duration.minutes).strftime('%H:%M')
       rescue
-        '11:00'
+        nil
       end
 
-      property_id = args['property_id']
-      property = Property.find_by(id: property_id, account_id: account_id)
-
-      Appointment.create!(
-        account_id: account_id,
-        contact_id: contact.id,
-        property_id: property&.id,
-        user_id: @conversation.user_id,
-        appointment_date: args['date'],
-        start_time: visit_time,
-        end_time: end_time_str,
-        status: 'Agendado'
+      appt = Appointment.create!(
+        account_id:        account.id,
+        contact_id:        contact.id,
+        professional_id:   professional.id,
+        service_id:        args['service_id'],
+        user_id:           @conversation.user_id,
+        appointment_date:  date_str,
+        start_time:        start_time,
+        end_time:          end_time,
+        status:            status_val,
+        consultation_type: consultation_type,
+        notes:             "Agendado via assistente virtual"
       )
 
-      property_desc = "Visita Agendada"
-      if property
-        price_str = property.price ? "R$ #{property.price.to_i}" : ""
-        bairro_str = property.neighborhood.present? ? " - #{property.neighborhood}" : ""
-        property_desc = "Visita: #{property.title || property.property_type}#{bairro_str} #{price_str}".strip
+      contact.update!(funnel_stage: 'agendado')
+
+      "✅ Consulta agendada! ID #{appt.id} — #{professional.name} em #{Date.parse(date_str).strftime('%d/%m/%Y')} às #{start_time}. A confirmação será enviada por WhatsApp em seguida."
+
+    when "find_patient_appointments"
+      cpf_clean = args['cpf'].to_s.gsub(/\D/, '')
+      found_contact = account.contacts.find_by(cpf: cpf_clean)
+      return "Nenhum paciente encontrado com esse CPF." unless found_contact
+
+      appts = account.appointments
+        .where(contact_id: found_contact.id)
+        .where('appointment_date >= ?', Date.current)
+        .includes(:professional, :service)
+        .order(appointment_date: :asc)
+        .limit(5)
+
+      return "#{found_contact.name} não possui consultas agendadas." if appts.empty?
+
+      list = appts.map do |a|
+        prof = a.professional&.name || '—'
+        svc  = a.service&.name      || '—'
+        "• ID #{a.id}: #{a.appointment_date.strftime('%d/%m/%Y')} às #{a.start_time} com #{prof} — #{svc} (#{a.status})"
       end
+      "Consultas de #{found_contact.name}:\n#{list.join("\n")}"
 
-      contact.update!(
-        status: 'visit',
-        intention: property_desc
-      )
+    when "cancel_appointment"
+      appt = account.appointments.find_by(id: args['appointment_id'])
+      return "Consulta não encontrada." unless appt
+      return "Esta consulta já está cancelada." if appt.status == 'cancelado'
 
-      execute_tool('apply_label', { 'label' => 'visita_agendada', 'reason' => 'Visita agendada pela IA' })
+      old_status = appt.status
+      appt.update_columns(status: 'cancelado', updated_at: Time.current)
+      AppointmentStatusNotificationJob.perform_later(appt.id, old_status, 'cancelado')
 
-      "Visita agendada com sucesso para #{args['date']} às #{args['time']} no imóvel ID #{args['property_id']}. O contato foi movido para 'Visita Agendada' no Kanban automaticamente."
+      "✅ Consulta ID #{appt.id} cancelada. O paciente receberá uma notificação pelo WhatsApp."
 
     when "apply_label"
       label_name = args['label'].to_s.strip.downcase
-      colors = { 'lead_quente' => '#ef4444', 'lead_frio' => '#3b82f6', 'desqualificado' => '#6b7280', 'com_atendente' => '#8b5cf6', 'visita_agendada' => '#10b981' }
+      colors = {
+        'consulta_agendada' => '#10b981',
+        'com_atendente'     => '#8b5cf6',
+        'paciente_quente'   => '#ef4444',
+        'paciente_frio'     => '#3b82f6',
+        'sem_agenda'        => '#94a3b8'
+      }
       color = colors[label_name] || '#6b7280'
-
-      # Remove etiquetas conflitantes antes de aplicar
-      conflicting = { 'lead_quente' => ['lead_frio'], 'lead_frio' => ['lead_quente'], 'desqualificado' => ['lead_quente', 'lead_frio'] }
-      (conflicting[label_name] || []).each do |remove_name|
-        old_tag = @conversation.account.tags.find_by(name: remove_name)
-        @conversation.tags.delete(old_tag) if old_tag && @conversation.tags.include?(old_tag)
-      end
 
       tag = @conversation.account.tags.find_or_create_by!(name: label_name) { |t| t.color = color }
       @conversation.tags << tag unless @conversation.tags.include?(tag)
@@ -430,146 +512,37 @@ class AiAssistantService
         tags: @conversation.reload.tags.map { |t| { id: t.id, name: t.name, color: t.color } }
       })
 
-      # Pausa IA permanentemente para labels que encerram o ciclo de IA
-      if %w[com_atendente visita_agendada desqualificado].include?(label_name)
+      if %w[consulta_agendada com_atendente].include?(label_name)
         pause_ai_permanently
-        # Atribui para o próximo da fila em qualquer encerramento de ciclo (exceto desqualificado)
-        if %w[com_atendente visita_agendada].include?(label_name)
-          RoundRobinAssignmentService.assign_next(@conversation.reload)
-        end
+        RoundRobinAssignmentService.assign_next(@conversation.reload) if label_name == 'com_atendente'
       end
 
-      "Etiqueta '#{label_name}' aplicada na conversa. #{args['reason']}"
+      "Etiqueta '#{label_name}' aplicada."
 
-    when "qualify_lead"
-      contact.update!(temperature: args['temperature'], intention: args['intention'])
-
-      # Auto-aplica etiqueta correspondente à temperatura
-      temp_label_map = { 'Quente' => 'lead_quente', 'Frio' => 'lead_frio', 'Morno' => 'lead_morno' }
-      label_name = temp_label_map[args['temperature']]
-      label_colors = { 'lead_quente' => '#ef4444', 'lead_frio' => '#3b82f6', 'lead_morno' => '#f59e0b' }
-
-      if label_name
-        # Remove etiquetas de temperatura anteriores
-        ['lead_quente', 'lead_frio', 'lead_morno'].each do |n|
-          t = @conversation.account.tags.find_by(name: n)
-          next unless t
-          ct = @conversation.conversation_tags.find_by(tag_id: t.id)
-          ct&.delete
-        end
-        @conversation.tags.reset
-
-        tag = @conversation.account.tags.find_or_create_by!(name: label_name) { |t| t.color = label_colors[label_name] }
-        @conversation.tags << tag
-
-        ActionCable.server.broadcast('conversations_channel', {
-          event: 'conversation_tags_updated',
-          conversation_id: @conversation.id,
-          tags: @conversation.reload.tags.map { |t| { id: t.id, name: t.name, color: t.color } }
-        })
-      end
-
-      "Lead qualificado: temperatura=#{args['temperature']}, intenção=#{args['intention']}."
-
-    when "route_to_department"
-      dept = args['department'].to_s
-      agent = User.where(account_id: account_id, status: 'active', department: dept)
-                  .order(Arel.sql('queue_position ASC NULLS FIRST, id ASC'))
-                  .first
+    when "transfer_to_human"
+      agent = account.users.where(status: 'active', role: [:secretaria, :admin]).order(:id).first
 
       if agent
         @conversation.update!(user_id: agent.id)
         ActionCable.server.broadcast('conversations_channel', {
           event: 'lead_atribuido',
           assigned_to_user_id: agent.id,
-          conversation_id: @conversation.id,
-          contact_name: contact.name.presence || contact.phone,
-          assigned_by: 'ia_routing'
+          conversation_id:     @conversation.id,
+          contact_name:        contact.name.presence || contact.phone,
+          assigned_by:         'ia_routing'
         })
-        AgentNotificationService.notify_assignment(
-          agent: agent, conversation: @conversation, assigned_by: 'ia'
-        ) rescue nil
+        AgentNotificationService.notify_assignment(agent: agent, conversation: @conversation, assigned_by: 'ia') rescue nil
         pause_ai_permanently
-        dept_label = { 'suporte' => 'Suporte', 'financeiro' => 'Financeiro', 'manutencao' => 'Manutenção' }[dept] || dept
-        "Conversa encaminhada para #{agent.first_name} (#{dept_label}). IA pausada."
+        "Conversa transferida para #{agent.first_name}. IA pausada."
       else
-        "Nenhum agente disponível no departamento #{dept} no momento."
+        "Nenhuma secretária disponível no momento. Informando ao paciente."
       end
 
-    when "move_kanban_card"
-      contact.update!(status: args['stage'])
-      "O status do cliente foi atualizado para #{args['stage']} no CRM."
-      
-    when "send_property_photos"
-      property = Property.find_by(id: args['property_id'], account_id: account_id)
-      if property
-        if property.photos.attached?
-          # Envia as fotos em background para não travar a resposta principal da IA
-          Thread.new do
-            begin
-              baileys_service = WhatsappBaileysService.new(@inbox)
-              remote_jid = @conversation.contact.jid || @conversation.contact.phone
-              
-              property.photos.first(5).each_with_index do |photo, index|
-                caption = index == 0 ? "Aqui estão as fotos do imóvel: #{property.title || property.property_type}" : ""
-                
-                # Envia via API do Baileys
-                baileys_service.send_message(remote_jid, caption, photo)
-                
-                # Salva a mensagem no CRM e já anexa a imagem para que o WebSockets dispare com a foto
-                begin
-                  Message.create!(
-                    account: @conversation.account,
-                    conversation: @conversation,
-                    text: caption.present? ? caption : "📎 Imagem enviada",
-                    sender_type: 'User',
-                    sender_id: nil,
-                    source_id: "ai_photo_#{SecureRandom.hex(8)}",
-                    status: :delivered,
-                    attachment: photo.blob
-                  )
-                rescue => e
-                  Rails.logger.error("Erro ao criar registro da mensagem com foto: #{e.message}")
-                end
-                
-                sleep 2
-              end
-            rescue => e
-              Rails.logger.error("Erro ao enviar fotos do imóvel: #{e.message}")
-            end
-          end
-          "Fotos do imóvel enviadas com sucesso para o cliente."
-        else
-          "O imóvel não possui fotos cadastradas no sistema."
-        end
-      else
-        "Imóvel não encontrado."
-      end
-      
     else
-      "Erro: Ferramenta não implementada."
+      "Ferramenta não reconhecida: #{name}"
     end
   rescue => e
-    "Erro ao executar a ferramenta: #{e.message}"
-  end
-
-  def pause_ai_permanently
-    jid = @conversation.contact.jid.presence || @conversation.contact.phone
-    return unless jid
-
-    # Pausa sem expiração — só é retomada pelo botão "Retomar IA"
-    Rails.cache.write("ai_paused_#{@inbox.id}_#{jid}", Time.current.to_i)
-
-    # Aplica tag agente_off para indicar visualmente que a IA está desligada
-    tag = @conversation.account.tags.find_or_create_by!(name: 'agente_off') { |t| t.color = '#f97316' }
-    @conversation.tags << tag unless @conversation.tags.include?(tag)
-
-    ActionCable.server.broadcast('conversations_channel', {
-      event: 'conversation_tags_updated',
-      conversation_id: @conversation.id,
-      tags: @conversation.reload.tags.map { |t| { id: t.id, name: t.name, color: t.color } }
-    })
-  rescue => e
-    Rails.logger.error("Erro ao pausar IA: #{e.message}")
+    Rails.logger.error("[AiAssistantService#execute_tool] #{name}: #{e.message}")
+    "Erro ao executar ação. Tente novamente."
   end
 end
