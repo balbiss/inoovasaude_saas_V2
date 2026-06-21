@@ -169,10 +169,18 @@ class AiAssistantService
       1. Cumprimente gentilmente e se apresente.
       2. Pergunte o nome completo.
       3. Pergunte o CPF.
-      4. Pergunte: tem convênio ou será particular?
-         • Se convênio: qual o plano? (Número da carteirinha é OPCIONAL — NÃO insista.)
-      5. Chame save_contact_data com os dados coletados.
+      4. Pergunte: tem convenio ou sera particular?
+         • Se convenio: qual o plano? (Numero da carteirinha e OPCIONAL — NAO insista.)
+      5. SOMENTE apos ter nome + CPF + convenio/particular, chame save_contact_data UMA UNICA VEZ
+         passando TODOS os dados coletados juntos: name, cpf, health_plan (e health_plan_number se informado).
+         NAO chame save_contact_data com apenas parte dos dados (ex: so o nome).
       6. Avance para o fluxo de agendamento.
+
+      IMPORTANTE — verificacao de historico:
+      O sistema identifica o paciente automaticamente pelo numero de telefone (nao pelo CPF).
+      O CPF e salvo apenas para o cadastro e para busca futura ("quando e minha consulta?").
+      As validacoes de duplo agendamento e prazo de retorno sao feitas automaticamente
+      pelo sistema no momento em que voce chamar book_appointment — voce nao precisa verificar manualmente.
 
       ═══ FLUXO — AGENDAMENTO ═══
       1. Chame list_professionals_and_services para ver opções disponíveis.
@@ -229,16 +237,16 @@ class AiAssistantService
         type: "function",
         function: {
           name: "save_contact_data",
-          description: "Salva ou atualiza os dados cadastrais do paciente (nome, CPF, convênio). Chame assim que coletar as informações.",
+          description: "Salva os dados cadastrais do paciente. SOMENTE chame esta funcao UMA VEZ, apos coletar nome + CPF + convenio juntos. Nunca chame so com o nome — espere ter todos os dados antes.",
           parameters: {
             type: "object",
             properties: {
               name:               { type: "string", description: "Nome completo do paciente" },
-              cpf:                { type: "string", description: "CPF (apenas dígitos ou formatado)" },
-              health_plan:        { type: "string", description: "Nome do convênio (ex: 'Unimed') ou 'particular'" },
-              health_plan_number: { type: "string", description: "Número da carteirinha (opcional)" }
+              cpf:                { type: "string", description: "CPF do paciente (digitos ou formatado). OBRIGATORIO para novos pacientes." },
+              health_plan:        { type: "string", description: "Nome do convenio (ex: 'Unimed', 'Bradesco Saude') ou 'particular'" },
+              health_plan_number: { type: "string", description: "Numero da carteirinha do convenio (opcional)" }
             },
-            required: ["name"]
+            required: ["name", "cpf", "health_plan"]
           }
         }
       },
@@ -355,17 +363,17 @@ class AiAssistantService
     when "save_contact_data"
       attrs = {}
       attrs[:name]               = args['name'].strip            if args['name'].present?
-      attrs[:cpf]                = args['cpf'].gsub(/\D/, '')    if args['cpf'].present?
+      attrs[:cpf]                = args['cpf'].to_s.gsub(/\D/, '') if args['cpf'].present?
       attrs[:health_plan]        = args['health_plan']           if args['health_plan'].present?
       attrs[:health_plan_number] = args['health_plan_number']    if args['health_plan_number'].present?
-      # Separa first_name / last_name a partir do nome completo
       if attrs[:name].present?
         parts = attrs[:name].split(' ', 2)
         attrs[:first_name] = parts[0]
         attrs[:last_name]  = parts[1] || ''
       end
       contact.update!(attrs)
-      "Dados do paciente salvos: #{attrs.map { |k, v| "#{k}=#{v}" }.join(', ')}."
+      Rails.logger.info("[AiAssistant] save_contact_data para contact##{contact.id}: #{attrs.keys.join(', ')}")
+      "Dados salvos: #{attrs.slice(:name, :cpf, :health_plan).map { |k, v| "#{k}=#{v}" }.join(', ')}."
 
     when "list_professionals_and_services"
       professionals = account.professionals.where(status: 'active').order(:name)
