@@ -14,12 +14,12 @@ class ConversationsController < ApplicationController
     end
 
     conversations = base
-      .includes(:user, :tags, messages: { attachment_attachment: :blob }, contact: { notes: :user })
+      .includes(:user, :tags, :last_message, contact: {})
       .order(last_activity_at: :desc)
       .offset((page - 1) * limit).limit(limit)
 
     users_hash = current_user.account.users.index_by(&:id)
-    render json: conversations.map { |conv| format_conversation(conv, users_hash) }
+    render json: conversations.map { |conv| format_conversation_list(conv, users_hash) }
   end
 
   def show
@@ -237,6 +237,36 @@ class ConversationsController < ApplicationController
 
   def conversation_params
     params.require(:conversation).permit(:status, :user_id, :snoozed_until)
+  end
+
+  def format_conversation_list(conv, users_hash = {})
+    lm = conv.last_message
+    {
+      id:           conv.id,
+      inbox_id:     conv.inbox_id,
+      source:       conv.source || 'whatsapp',
+      preview:      lm&.text.presence || 'Nova Conversa',
+      timestamp:    lm ? lm.created_at.strftime('%H:%M') : conv.created_at.strftime('%H:%M'),
+      unread:       conv.unread_count,
+      assignee:     conv.user&.first_name,
+      assignee_id:  conv.user_id,
+      status:       conv.status,
+      snoozed_until: conv.snoozed_until,
+      tags:         conv.tags.map { |t| { id: t.id, name: t.name, color: t.color } },
+      messages:     [], # carregadas sob demanda via GET /conversations/:id
+      contact: {
+        id:             conv.contact.id,
+        name:           conv.contact.name,
+        phone:          conv.contact.phone,
+        email:          conv.contact.email,
+        jid:            conv.contact.jid,
+        avatar_url:     conv.contact.avatar_url,
+        avatarInitials: conv.contact.name.to_s[0..1].upcase,
+        avatarBg:       '#0052CC',
+        status:         'online',
+        funnel_stage:   conv.contact.funnel_stage,
+      }
+    }
   end
 
   def format_conversation(conv, users_hash = {})

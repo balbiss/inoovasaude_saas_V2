@@ -14,6 +14,7 @@ export const useConversationsStore = defineStore('conversations', {
     sortType: 'all',
     advancedFilters: [],
     ws: null,
+    _cachedAt: 0,
     currentUser: (() => {
       try {
         return JSON.parse(localStorage.getItem('user')) || { first_name: 'Usuário', email: '' }
@@ -103,16 +104,40 @@ export const useConversationsStore = defineStore('conversations', {
   },
 
   actions: {
-    async fetchConversations() {
+    async fetchConversations(force = false) {
+      const TTL = 30_000
+      const fresh = this.conversations.length > 0 && Date.now() - this._cachedAt < TTL
+      if (!force && fresh) return
+
       try {
         const response = await api.get('/conversations')
-        this.conversations = response.data
+        // Preservar mensagens já carregadas para não perder o chat aberto
+        const existing = Object.fromEntries(this.conversations.map(c => [c.id, c.messages]))
+        this.conversations = response.data.map(c => ({
+          ...c,
+          messages: existing[c.id] || [],
+        }))
         if (this.conversations.length > 0 && !this.activeConversationId) {
           this.activeConversationId = this.conversations[0].id
         }
+        this._cachedAt = Date.now()
         this.setupWebSocket()
       } catch (error) {
         console.error('Error fetching conversations:', error)
+      }
+    },
+
+    async loadMessages(conversationId) {
+      const conv = this.conversations.find(c => c.id === conversationId)
+      if (!conv) return
+      if (conv.messages && conv.messages.length > 0) return // já carregadas
+
+      try {
+        const res = await api.get(`/conversations/${conversationId}`)
+        conv.messages     = res.data.messages || []
+        conv.contact      = res.data.contact   // full contact with notes
+      } catch (e) {
+        console.error('loadMessages:', e)
       }
     },
 
@@ -166,6 +191,7 @@ export const useConversationsStore = defineStore('conversations', {
       const conv = this.conversations.find(c => c.id === id)
       if (conv) {
         conv.unread = 0
+        this.loadMessages(id)
       }
     },
 
