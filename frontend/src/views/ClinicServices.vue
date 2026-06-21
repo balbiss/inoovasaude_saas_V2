@@ -122,7 +122,7 @@ const deleteService = async (id) => {
 </template>
 
 <style scoped>
-.services-page { padding: 24px; max-width: 900px; margin: 0 auto; }
+.services-page { padding: 24px; }
 .page-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; flex-wrap: wrap; gap: 12px; }
 .header-left { display: flex; align-items: center; gap: 10px; }
 .header-left h1 { font-size: 1.5rem; font-weight: 700; color: var(--text-main); }

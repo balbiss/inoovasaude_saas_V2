@@ -122,7 +122,7 @@ const save = async () => {
 </template>
 
 <style scoped>
-.form-page { padding: 24px; max-width: 700px; margin: 0 auto; }
+.form-page { padding: 24px; }
 .form-header { display: flex; align-items: center; gap: 16px; margin-bottom: 24px; }
 .form-header h1 { display: flex; align-items: center; gap: 8px; font-size: 1.4rem; font-weight: 700; color: var(--text-main); }
 .header-icon { width: 24px; height: 24px; color: var(--primary); }
