@@ -820,8 +820,12 @@ const funnelItems = computed(() => {
   background: var(--bg-secondary);
   border: 1px solid var(--border-color);
   border-radius: 12px;
-  overflow: hidden;
   box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+  overflow: visible;
+
+  .appt-today-row:first-child { border-radius: 12px 12px 0 0; }
+  .appt-today-row:last-child  { border-radius: 0 0 12px 12px; border-bottom: none; }
+  .appt-today-row:only-child  { border-radius: 12px; }
 }
 
 .appt-today-row {
