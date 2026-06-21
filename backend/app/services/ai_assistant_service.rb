@@ -176,17 +176,25 @@ class AiAssistantService
 
       ═══ FLUXO — AGENDAMENTO ═══
       1. Chame list_professionals_and_services para ver opções disponíveis.
-      2. Apresente profissionais e serviços de forma natural (não em lista robótica).
+      2. Apresente APENAS nome e especialidade do profissional. NUNCA mencione duração, preço ou valores — são dados internos.
       3. Pergunte qual profissional/serviço o paciente prefere.
          • Se o paciente tiver convênio, verifique se o profissional aceita o plano.
          • Se não aceitar, informe e ofereça alternativas ou consulta particular.
       4. Pergunte a data desejada.
-      5. SEMPRE chame check_availability(professional_id, date). NUNCA invente horários.
-      6. Se não houver horários no dia, sugira outro dia próximo.
-      7. Apresente os horários disponíveis de forma conversacional.
-      8. Confirme todos os dados antes de agendar:
+      5. CONVERSÃO DE DATA — OBRIGATÓRIO antes de chamar check_availability:
+         Hoje é #{Time.current.in_time_zone('America/Sao_Paulo').strftime('%A, %d/%m/%Y')}.
+         Converta SEMPRE expressões relativas para YYYY-MM-DD:
+         • "amanhã" → #{(Date.current + 1).strftime('%Y-%m-%d')}
+         • "segunda" / "segunda-feira" → calcule a próxima segunda no formato YYYY-MM-DD
+         • "terça", "quarta", etc → calcule o próximo dia correspondente
+         • "essa semana" → pergunte qual dia específico
+         Só chame check_availability após calcular a data exata em YYYY-MM-DD.
+      6. SEMPRE chame check_availability(professional_id, date) com YYYY-MM-DD. NUNCA invente horários.
+      7. Se não houver horários, informe e pergunte se quer tentar outro dia.
+      8. Apresente os horários disponíveis de forma natural (ex: "Tenho 09h, 10h e 14h — qual prefere?").
+      9. Confirme todos os dados antes de agendar:
          "Posso confirmar: [nome] com [profissional] no dia [data] às [hora], certo?"
-      9. Após confirmação do paciente, chame book_appointment.
+      10. Após confirmação, chame book_appointment.
 
       ═══ REGRA DE RETORNO ═══
       • Retorno só é permitido se o paciente tiver comparecido a uma consulta anterior.
@@ -205,7 +213,8 @@ class AiAssistantService
       • Se o paciente pedir para falar com uma pessoa: aplique "com_atendente" e transfira.
 
       REGRAS ABSOLUTAS:
-      ✗ NUNCA invente horários disponíveis. Use sempre check_availability antes.
+      ✗ NUNCA mencione duração de consulta, preço ou valores ao paciente.
+      ✗ NUNCA invente horários. Use sempre check_availability com data em YYYY-MM-DD.
       ✗ NUNCA agende sem confirmação explícita do paciente.
       ✗ NUNCA pergunte número de carteirinha de forma obrigatória.
     PROMPT
@@ -386,7 +395,11 @@ class AiAssistantService
       professional = account.professionals.find_by(id: args['professional_id'])
       return "Profissional não encontrado." unless professional
 
-      date = Date.parse(args['date'].to_s) rescue Date.current
+      date = begin
+        Date.parse(args['date'].to_s)
+      rescue
+        return "ERRO: data '#{args['date']}' inválida. Converta para o formato YYYY-MM-DD antes de chamar check_availability (ex: 2026-06-23)."
+      end
       slots = AgentAvailabilityService.new(professional).available_slots(date)
 
       if slots.empty?
