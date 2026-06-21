@@ -6,7 +6,11 @@ class AgentAvailabilityService
   end
 
   def available_slots(date)
-    date = Date.parse(date.to_s) rescue return []
+    begin
+      date = Date.parse(date.to_s)
+    rescue
+      return []
+    end
     day_key = DAY_MAP[date.wday]
 
     schedule  = (@professional.schedule || {}).with_indifferent_access
