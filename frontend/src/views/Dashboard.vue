@@ -1,16 +1,18 @@
 <script setup>
-import { onMounted, computed } from 'vue'
+import { onMounted, onUnmounted, computed, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import {
   Users, Stethoscope, Calendar, CalendarCheck,
   CalendarDays, MessageCircle, UserCheck, TrendingUp, BarChart2,
-  CheckCircle, ChevronRight, Phone, ArrowRight, Inbox, Clock
+  CheckCircle, ChevronRight, ChevronDown, Phone, ArrowRight, Inbox, Clock
 } from 'lucide-vue-next'
 import { Doughnut } from 'vue-chartjs'
 import { Chart as ChartJS, Title, Tooltip, Legend, ArcElement, CategoryScale } from 'chart.js'
 import { useDashboardStore } from '../store/dashboard'
 import { useConversationsStore } from '../store/conversations'
 import { storeToRefs } from 'pinia'
+import api from '../api'
+import Swal from 'sweetalert2'
 
 ChartJS.register(Title, Tooltip, Legend, ArcElement, CategoryScale)
 
@@ -62,7 +64,52 @@ const apptStatusStyle = (s) => ({
   retorno:         { bg: '#f5f3ff', text: '#7c3aed' },
 }[s] || { bg: '#f1f5f9', text: '#64748b' })
 
-onMounted(() => store.fetchDashboard())
+const STATUS_OPTIONS = [
+  { value: 'agendado',       label: 'Agendado' },
+  { value: 'confirmado',     label: 'Confirmado' },
+  { value: 'compareceu',     label: 'Compareceu' },
+  { value: 'nao_compareceu', label: 'Faltou' },
+  { value: 'cancelado',      label: 'Cancelado' },
+  { value: 'retorno',        label: 'Retorno' },
+]
+
+const statusMenuOpen = ref(null)
+const localStatuses  = ref({})
+
+const displayStatus = (appt) => localStatuses.value[appt.id] || appt.status
+
+const toggleStatusMenu = (e, apptId) => {
+  e.stopPropagation()
+  statusMenuOpen.value = statusMenuOpen.value === apptId ? null : apptId
+}
+
+const changeStatus = async (e, appt, newStatus) => {
+  e.stopPropagation()
+  statusMenuOpen.value = null
+  const oldStatus = localStatuses.value[appt.id] || appt.status
+  if (oldStatus === newStatus) return
+  localStatuses.value[appt.id] = newStatus
+  try {
+    await api.patch(`/appointments/${appt.id}/update_status`, { status: newStatus })
+    store.fetchDashboard(true)
+    Swal.fire({ toast: true, position: 'top-end', icon: 'success',
+      title: `Status atualizado — WhatsApp enviado ao paciente`, showConfirmButton: false, timer: 2500 })
+  } catch {
+    localStatuses.value[appt.id] = oldStatus
+    Swal.fire({ toast: true, position: 'top-end', icon: 'error',
+      title: 'Erro ao atualizar status', showConfirmButton: false, timer: 2500 })
+  }
+}
+
+const closeStatusMenu = () => { statusMenuOpen.value = null }
+
+onMounted(() => {
+  store.fetchDashboard()
+  document.addEventListener('click', closeStatusMenu)
+})
+onUnmounted(() => {
+  document.removeEventListener('click', closeStatusMenu)
+})
 
 const dashTitle    = computed(() => isOwner.value ? 'Painel da Clínica' : 'Meu Painel')
 const dashSubtitle = computed(() => isOwner.value
@@ -291,10 +338,28 @@ const funnelItems = computed(() => {
               {{ [appt.professional, appt.service].filter(Boolean).join(' · ') || 'Sem detalhe' }}
             </span>
           </div>
-          <span
-            class="appt-status-badge"
-            :style="{ background: apptStatusStyle(appt.status).bg, color: apptStatusStyle(appt.status).text }"
-          >{{ apptStatusLabel(appt.status) }}</span>
+          <!-- Status dropdown -->
+          <div class="status-menu-wrap" @click.stop>
+            <button
+              class="appt-status-badge appt-status-btn"
+              :style="{ background: apptStatusStyle(displayStatus(appt)).bg, color: apptStatusStyle(displayStatus(appt)).text }"
+              @click.stop="toggleStatusMenu($event, appt.id)"
+            >
+              {{ apptStatusLabel(displayStatus(appt)) }}
+              <ChevronDown class="status-chevron" />
+            </button>
+            <div v-if="statusMenuOpen === appt.id" class="status-dropdown">
+              <button
+                v-for="opt in STATUS_OPTIONS"
+                :key="opt.value"
+                class="status-opt"
+                :class="{ 'status-opt--active': displayStatus(appt) === opt.value }"
+                @click.stop="changeStatus($event, appt, opt.value)"
+              >
+                {{ opt.label }}
+              </button>
+            </div>
+          </div>
           <ChevronRight class="appt-arrow" />
         </div>
       </div>
@@ -816,6 +881,61 @@ const funnelItems = computed(() => {
   border-radius: 20px;
   white-space: nowrap;
   flex-shrink: 0;
+}
+
+.status-menu-wrap {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.appt-status-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+  border: none;
+  cursor: pointer;
+  font-family: inherit;
+  transition: opacity 0.15s;
+
+  &:hover { opacity: 0.8; }
+
+  .status-chevron { width: 11px; height: 11px; }
+}
+
+.status-dropdown {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 6px);
+  background: var(--bg-secondary, #fff);
+  border: 1px solid var(--border-color, #e2e8f0);
+  border-radius: 10px;
+  box-shadow: 0 8px 28px rgba(0,0,0,0.13);
+  z-index: 60;
+  overflow: hidden;
+  min-width: 148px;
+}
+
+.status-opt {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 0.52rem 1rem;
+  font-size: 0.81rem;
+  font-weight: 500;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--text-main, #334155);
+  font-family: inherit;
+  transition: background 0.1s;
+
+  &:hover { background: var(--bg-hover, #f8fafc); }
+
+  &.status-opt--active {
+    color: var(--primary, #0d9488);
+    font-weight: 700;
+    background: #f0fdfa;
+  }
 }
 
 .appt-arrow {

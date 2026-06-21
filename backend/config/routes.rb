@@ -14,6 +14,9 @@ Rails.application.routes.draw do
       get :report
       get :export
     end
+    member do
+      patch :update_status
+    end
   end
   resources :agents do
     member do

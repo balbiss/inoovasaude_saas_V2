@@ -1,5 +1,5 @@
 class AppointmentsController < ApplicationController
-  before_action :set_appointment, only: %i[ show update destroy ]
+  before_action :set_appointment, only: %i[ show update destroy update_status ]
 
   # GET /appointments/report
   def report
@@ -161,6 +161,18 @@ class AppointmentsController < ApplicationController
     else
       render json: @appointment.errors, status: :unprocessable_entity
     end
+  end
+
+  # PATCH /appointments/1/update_status
+  def update_status
+    valid_statuses = %w[agendado confirmado compareceu nao_compareceu cancelado retorno]
+    new_status = params[:status].to_s
+    return render json: { error: 'Status inválido' }, status: :unprocessable_entity unless valid_statuses.include?(new_status)
+
+    old_status = @appointment.status
+    @appointment.update_columns(status: new_status, updated_at: Time.current)
+    AppointmentStatusNotificationJob.perform_later(@appointment.id, old_status, new_status) if old_status != new_status
+    render json: { id: @appointment.id, status: new_status }
   end
 
   # DELETE /appointments/1
