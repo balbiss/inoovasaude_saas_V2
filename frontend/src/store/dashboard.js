@@ -17,6 +17,7 @@ export const useDashboardStore = defineStore('dashboard', {
       datasets: [{ data: [1], backgroundColor: ['#e5e7eb'] }]
     },
     todayLeads: [],
+    todayAppointments: [],
     isOwner: false,
     isLoading: false,
     _cachedAt: 0,
@@ -32,7 +33,8 @@ export const useDashboardStore = defineStore('dashboard', {
         const res = await api.get('/dashboard')
         this.kpis       = res.data.kpis
         this.isOwner    = res.data.is_owner
-        this.todayLeads = res.data.today_assigned_leads || []
+        this.todayLeads        = res.data.today_assigned_leads || []
+        this.todayAppointments = res.data.today_appointments   || []
 
         const sourceData = res.data.leads_by_source || {}
         const labels = Object.keys(sourceData)

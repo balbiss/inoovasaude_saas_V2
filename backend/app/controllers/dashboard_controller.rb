@@ -1,6 +1,6 @@
 class DashboardController < ApplicationController
   def index
-    is_owner   = current_user.empresa? || current_user.admin? || current_user.has_permission?('view_all_contacts')
+    is_owner   = current_user.secretaria? || current_user.admin? || current_user.has_permission?('view_all_contacts')
     account    = current_user.account
     uid        = current_user.id
     today      = Date.current
@@ -20,24 +20,17 @@ class DashboardController < ApplicationController
                                   .where('user_id = ? OR (user_id IS NULL AND contact_id IN (?))', uid, my_contact_ids.presence || [0])
     end
 
-    # Batch contacts: 3 GROUP BY queries instead of 9 individual COUNTs
     total_contacts  = contacts_scope.count
-    temp_counts     = contacts_scope.group(:temperature).count
-    status_counts   = contacts_scope.group(:status).count
-    intention_counts = contacts_scope.group(:intention).count
-
-    quente = %w[quente Quente QUENTE].sum { |t| temp_counts[t] || 0 }
-    morno  = %w[morno Morno MORNO].sum   { |t| temp_counts[t] || 0 }
-    frio   = %w[frio Frio FRIO].sum      { |t| temp_counts[t] || 0 }
+    funnel_counts   = contacts_scope.group(:funnel_stage).count
 
     kanban = {
-      lead:     status_counts['lead']     || 0,
-      visit:    status_counts['visit']    || 0,
-      proposal: status_counts['proposal'] || 0,
-      won:      status_counts['won']      || 0
+      novo_paciente: funnel_counts['novo_paciente'] || 0,
+      agendado:      funnel_counts['agendado']      || 0,
+      compareceu:    funnel_counts['compareceu']    || 0,
+      retorno:       funnel_counts['retorno']       || 0
     }
 
-    pretensao_venda = %w[venda Venda VENDA].sum { |i| intention_counts[i] || 0 }
+    retorno_count = funnel_counts['retorno'] || 0
 
     # Batch conversations: 1 GROUP BY instead of 2 COUNTs
     conv_status   = conv_scope.group(:status).count
@@ -58,6 +51,25 @@ class DashboardController < ApplicationController
 
     leads_by_source = contacts_scope.where.not(source: [nil, '']).group(:source).count
 
+    # Consultas do dia
+    today_appointments = appt_scope
+      .where(appointment_date: today)
+      .includes(:contact, :professional, :service)
+      .order(Arel.sql("NULLIF(start_time, '') ASC NULLS LAST"))
+      .limit(50)
+      .map do |appt|
+        {
+          id:            appt.id,
+          start_time:    appt.start_time,
+          end_time:      appt.end_time,
+          status:        appt.status,
+          contact_name:  appt.contact&.name.presence || appt.contact&.phone || 'Desconhecido',
+          contact_phone: appt.contact&.phone,
+          professional:  appt.professional&.name,
+          service:       appt.service&.name,
+        }
+      end
+
     # Leads atribuídos hoje — conversas novas atribuídas a este usuário (ou a qualquer um, se dono)
     today_conv_scope = is_owner \
       ? account.conversations.where(created_at: today.beginning_of_day..today.end_of_day) \
@@ -74,9 +86,8 @@ class DashboardController < ApplicationController
           conversation_id: conv.id,
           contact_name:    c.name.presence || c.phone || 'Desconhecido',
           contact_phone:   c.phone,
-          temperature:     c.temperature,
-          kanban_status:   c.status,
-          intention:       c.intention&.truncate(80),
+          funnel_stage:    c.funnel_stage,
+          health_notes:    c.health_notes,
           assigned_to:     conv.user_id == uid ? nil : account.users.find_by(id: conv.user_id)&.first_name,
           created_at:      conv.created_at
         }
@@ -86,14 +97,14 @@ class DashboardController < ApplicationController
       is_owner: is_owner,
       kpis: {
         total_contacts:  total_contacts,
-        pretensao_venda: pretensao_venda,
-        temperature:     { quente: quente, morno: morno, frio: frio },
+        retorno_count:   retorno_count,
         kanban:          kanban,
         conversations:   { open: conv_open, resolved: conv_resolved, today: conv_today, with_human: with_human },
         appointments:    { total: appt_total, today: appt_today, upcoming: appt_upcoming, done: appt_done }
       },
       leads_by_source:      leads_by_source,
-      today_assigned_leads: today_assigned_leads
+      today_assigned_leads: today_assigned_leads,
+      today_appointments:   today_appointments
     }
   end
 end

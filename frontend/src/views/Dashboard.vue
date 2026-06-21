@@ -4,7 +4,7 @@ import { useRouter } from 'vue-router'
 import {
   Users, Stethoscope, Calendar, CalendarCheck,
   CalendarDays, MessageCircle, UserCheck, TrendingUp, BarChart2,
-  CheckCircle, ChevronRight, Phone, ArrowRight, Inbox, RefreshCw
+  CheckCircle, ChevronRight, Phone, ArrowRight, Inbox, RefreshCw, Clock
 } from 'lucide-vue-next'
 import { Doughnut } from 'vue-chartjs'
 import { Chart as ChartJS, Title, Tooltip, Legend, ArcElement, CategoryScale } from 'chart.js'
@@ -17,7 +17,7 @@ ChartJS.register(Title, Tooltip, Legend, ArcElement, CategoryScale)
 const router = useRouter()
 const store = useDashboardStore()
 const conversationsStore = useConversationsStore()
-const { kpis, leadsBySourceData, isLoading, isOwner, todayLeads } = storeToRefs(store)
+const { kpis, leadsBySourceData, isLoading, isOwner, todayLeads, todayAppointments } = storeToRefs(store)
 
 const openConversation = (conversationId) => {
   conversationsStore.setActiveConversation(conversationId)
@@ -43,6 +43,24 @@ const funnelBadge = (s) => {
   }
   return map[s] || { bg: '#f1f5f9', text: '#64748b' }
 }
+
+const apptStatusLabel = (s) => ({
+  agendado:        'Agendado',
+  confirmado:      'Confirmado',
+  compareceu:      'Compareceu',
+  nao_compareceu:  'Faltou',
+  cancelado:       'Cancelado',
+  retorno:         'Retorno',
+}[s] || s)
+
+const apptStatusStyle = (s) => ({
+  agendado:        { bg: '#eff6ff', text: '#2563eb' },
+  confirmado:      { bg: '#f0fdf4', text: '#16a34a' },
+  compareceu:      { bg: '#f0fdfa', text: '#0f766e' },
+  nao_compareceu:  { bg: '#fef2f2', text: '#dc2626' },
+  cancelado:       { bg: '#f1f5f9', text: '#64748b' },
+  retorno:         { bg: '#f5f3ff', text: '#7c3aed' },
+}[s] || { bg: '#f1f5f9', text: '#64748b' })
 
 onMounted(() => store.fetchDashboard())
 
@@ -242,6 +260,42 @@ const funnelItems = computed(() => {
             </div>
           </div>
           <div class="kpi-badge done">Concluídas</div>
+        </div>
+      </div>
+
+      <!-- Consultas de Hoje -->
+      <div class="section-label mt-section">
+        Consultas de Hoje
+        <span class="today-count">{{ todayAppointments.length }}</span>
+      </div>
+
+      <div v-if="todayAppointments.length === 0" class="today-empty">
+        <CalendarDays class="today-empty-ic" />
+        <p>Nenhuma consulta agendada para hoje.</p>
+      </div>
+
+      <div v-else class="appt-today-list">
+        <div
+          v-for="appt in todayAppointments"
+          :key="appt.id"
+          class="appt-today-row"
+          @click="router.push('/agendamentos/' + appt.id + '/editar')"
+        >
+          <div class="appt-time">
+            <Clock class="appt-time-ic" />
+            <span>{{ appt.start_time || '—' }}</span>
+          </div>
+          <div class="appt-info">
+            <span class="appt-patient">{{ appt.contact_name }}</span>
+            <span class="appt-detail">
+              {{ [appt.professional, appt.service].filter(Boolean).join(' · ') || 'Sem detalhe' }}
+            </span>
+          </div>
+          <span
+            class="appt-status-badge"
+            :style="{ background: apptStatusStyle(appt.status).bg, color: apptStatusStyle(appt.status).text }"
+          >{{ apptStatusLabel(appt.status) }}</span>
+          <ChevronRight class="appt-arrow" />
         </div>
       </div>
 
@@ -694,6 +748,88 @@ const funnelItems = computed(() => {
 }
 
 /* Responsive */
+/* Consultas de Hoje */
+.appt-today-list {
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+}
+
+.appt-today-row {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.85rem 1.25rem;
+  border-bottom: 1px solid var(--border-color);
+  cursor: pointer;
+  transition: background 0.15s;
+
+  &:last-child { border-bottom: none; }
+  &:hover { background: var(--bg-hover); }
+}
+
+.appt-time {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  min-width: 72px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--primary);
+
+  .appt-time-ic { width: 14px; height: 14px; flex-shrink: 0; }
+}
+
+.appt-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+
+  .appt-patient {
+    font-size: 0.88rem;
+    font-weight: 600;
+    color: var(--text-main);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .appt-detail {
+    font-size: 0.78rem;
+    color: var(--text-muted);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+}
+
+.appt-status-badge {
+  font-size: 0.72rem;
+  font-weight: 600;
+  padding: 0.2rem 0.6rem;
+  border-radius: 20px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.appt-arrow {
+  width: 16px;
+  height: 16px;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+@media (max-width: 768px) {
+  .appt-today-row { gap: 0.6rem; padding: 0.75rem 1rem; }
+  .appt-time { min-width: 58px; font-size: 0.8rem; }
+}
+
 @media (max-width: 1100px) {
   .grid-4 { grid-template-columns: repeat(2, 1fr); }
   .grid-2-3 { grid-template-columns: 1fr; }
