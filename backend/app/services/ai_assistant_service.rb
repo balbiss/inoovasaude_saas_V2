@@ -191,10 +191,12 @@ class AiAssistantService
          Só chame check_availability após calcular a data exata em YYYY-MM-DD.
       6. SEMPRE chame check_availability(professional_id, date) com YYYY-MM-DD. NUNCA invente horários.
       7. Se não houver horários, informe e pergunte se quer tentar outro dia.
-      8. Apresente os horários disponíveis de forma natural (ex: "Tenho 09h, 10h e 14h — qual prefere?").
-      9. Confirme todos os dados antes de agendar:
-         "Posso confirmar: [nome] com [profissional] no dia [data] às [hora], certo?"
-      10. Após confirmação, chame book_appointment.
+      8. Apresente os horários disponíveis de forma organizada e visual, respeitando os grupos manhã/tarde retornados pela ferramenta.
+         Exemplo: "Temos os seguintes horários disponíveis:\n\n🌅 Manhã: 08:00 | 09:00 | 10:00\n☀️ Tarde: 14:00 | 15:00\n\nQual você prefere? 😊"
+      9. Quando o paciente escolher um horário da lista já apresentada:
+         • NÃO chame check_availability novamente — o horário já foi confirmado como disponível.
+         • Vá direto para a confirmação: "Posso confirmar: [nome] com [profissional] no dia [data] às [hora]?"
+      10. Após confirmação explícita do paciente ("sim", "pode ser", "confirma", etc.), chame book_appointment.
 
       ═══ REGRA DE RETORNO ═══
       • Retorno só é permitido se o paciente tiver comparecido a uma consulta anterior.
@@ -381,9 +383,7 @@ class AiAssistantService
       end
 
       svc_list = services.map do |s|
-        price_str = s.price.present? ? " — R$ #{s.price}" : ""
-        dur_str   = s.duration_minutes.present? ? " (#{s.duration_minutes} min)" : ""
-        "• ID #{s.id}: #{s.name}#{dur_str}#{price_str}"
+        "• ID #{s.id}: #{s.name}"
       end
 
       [
@@ -405,7 +405,12 @@ class AiAssistantService
       if slots.empty?
         "Nenhum horário disponível para #{professional.name} em #{date.strftime('%d/%m/%Y')}. O profissional pode não atender nesse dia ou todos os horários já estão ocupados."
       else
-        "Horários disponíveis para #{professional.name} em #{date.strftime('%d/%m/%Y')}: #{slots.join(', ')}."
+        morning   = slots.select { |s| s < "12:00" }
+        afternoon = slots.reject { |s| s < "12:00" }
+        lines = ["Horários disponíveis para #{professional.name} em #{date.strftime('%d/%m/%Y')}:"]
+        lines << "🌅 Manhã: #{morning.join(' | ')}"   if morning.any?
+        lines << "☀️ Tarde: #{afternoon.join(' | ')}" if afternoon.any?
+        lines.join("\n")
       end
 
     when "book_appointment"
