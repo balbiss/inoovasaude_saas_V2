@@ -4,7 +4,7 @@ import { useRouter } from 'vue-router'
 import {
   Users, Stethoscope, Calendar, CalendarCheck,
   CalendarDays, MessageCircle, UserCheck, TrendingUp, BarChart2,
-  CheckCircle, ChevronRight, Phone, ArrowRight, Inbox, RefreshCw, Clock
+  CheckCircle, ChevronRight, Phone, ArrowRight, Inbox, Clock
 } from 'lucide-vue-next'
 import { Doughnut } from 'vue-chartjs'
 import { Chart as ChartJS, Title, Tooltip, Legend, ArcElement, CategoryScale } from 'chart.js'
@@ -104,7 +104,7 @@ const funnelItems = computed(() => {
         <p>{{ dashSubtitle }}</p>
       </div>
       <div class="header-actions">
-        <button class="btn-outline" @click="store.fetchDashboard()">
+        <button class="btn-outline" @click="store.fetchDashboard(true)">
           <TrendingUp class="ic" /> Atualizar
         </button>
       </div>
