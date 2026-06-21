@@ -182,28 +182,41 @@ class AiAssistantService
       Duplo agendamento e prazo de retorno sao verificados automaticamente por CPF ao chamar book_appointment.
 
       ═══ FLUXO — AGENDAMENTO ═══
-      1. Chame list_professionals_and_services. A resposta inclui os dias que cada profissional atende.
-      2. Apresente nome, especialidade e dias de atendimento. NUNCA mencione duracao, preco ou valores.
-      3. Pergunte qual profissional/servico o paciente prefere.
-         • Se convenio, verifique se o profissional aceita o plano. Se nao aceitar, oferea alternativas.
-      4. Se o paciente perguntar "quais dias ele atende?" ou similar: responda com os dias da semana
-         que constam no retorno de list_professionals_and_services. NAO invente.
-      5. Pergunte a data desejada. Faca UMA pergunta por vez.
-      6. CONVERSAO DE DATA — obrigatorio antes de chamar check_availability:
+      Sempre chame list_professionals_and_services antes de qualquer coisa neste fluxo.
+      A resposta traz: ID, nome, especialidade, agenda (dias e horarios), convenios aceitos.
+
+      CASO A — Paciente ja mencionou medico ou especialidade:
+      1. Identifique o profissional pelo nome ou especialidade citada.
+         • Se tiver convenio, confirme se o profissional aceita. Se nao aceitar, informe e oferea alternativas.
+      2. Confirme com o paciente: "Voce gostaria de agendar com [nome] — [especialidade], certo?"
+      3. Va direto para a pergunta de data (passo 5 abaixo).
+
+      CASO B — Paciente nao mencionou medico ou especialidade:
+      1. Apresente a lista completa de profissionais com: nome, especialidade, dias e horarios de atendimento, convenios aceitos.
+         Formato sugerido por profissional:
+           "[Nome] — [Especialidade]
+            Agenda: Seg 08:00-17:00 | Qua 08:00-17:00 | Sex 08:00-12:00
+            Aceita: Unimed, Bradesco, Particular"
+      2. Pergunte: "Com qual profissional voce gostaria de agendar?"
+         • Se o paciente escolher pela especialidade ("quero cardiologia"), identifique o profissional correspondente.
+         • Se houver mais de um para a mesma especialidade, apresente as opcoes.
+
+      SELECAO DE DATA (para ambos os casos):
+      3. Pergunte a data desejada. Use a agenda do profissional para orientar:
+         se o paciente pedir um dia que o profissional nao atende, informe e sugira os dias corretos.
+      4. CONVERSAO DE DATA — obrigatorio antes de check_availability:
          Hoje e #{Time.current.in_time_zone('America/Sao_Paulo').strftime('%A, %d/%m/%Y')}.
-         Converta expressoes relativas para YYYY-MM-DD:
          • "amanha" → #{(Date.current + 1).strftime('%Y-%m-%d')}
          • "segunda" / "segunda-feira" → proxima segunda em YYYY-MM-DD
          • "terca", "quarta", etc → proximo dia correspondente
          • "essa semana" → pergunte qual dia especifico
-      7. Chame check_availability(professional_id, date). NUNCA invente horarios.
-         • Se nao houver horarios nesse dia, informe e pergunte outra data. NAO desista.
-      8. Apresente os horarios separando manha e tarde, sem emojis:
+      5. Chame check_availability(professional_id, date). NUNCA invente horarios.
+         • Sem horarios disponiveis: informe e pergunte outra data. NAO desista.
+      6. Apresente horarios separando manha e tarde, sem emojis:
          "Manha: 08:00 | 09:00 | 10:00\nTarde: 14:00 | 15:00\n\nQual voce prefere?"
-      9. Quando o paciente escolher um horario ja listado:
-         • NAO chame check_availability de novo.
-         • Va direto para confirmar: "Posso confirmar: [nome] com [profissional] dia [data] as [hora]?"
-      10. Apos confirmacao ("sim", "pode ser", "confirma"), chame book_appointment.
+      7. Paciente escolheu horario da lista: NAO rechame check_availability.
+         Va direto para: "Posso confirmar: [nome] com [profissional] dia [data] as [hora]?"
+      8. Apos confirmacao ("sim", "pode ser", "confirma"), chame book_appointment.
 
       ═══ REGRA DE RETORNO ═══
       • Retorno so e permitido se o paciente tiver comparecido a uma consulta anterior.
@@ -386,9 +399,10 @@ class AiAssistantService
       professionals = account.professionals.where(status: 'active').order(:name)
       services      = account.services.where(status: 'active').order(:name)
 
+      day_order  = %w[segunda terca quarta quinta sexta sabado domingo]
       day_labels = {
-        'segunda' => 'Segunda', 'terca' => 'Terca', 'quarta' => 'Quarta',
-        'quinta'  => 'Quinta',  'sexta' => 'Sexta', 'sabado' => 'Sabado', 'domingo' => 'Domingo'
+        'segunda' => 'Seg', 'terca' => 'Ter', 'quarta' => 'Qua',
+        'quinta'  => 'Qui', 'sexta' => 'Sex', 'sabado' => 'Sab', 'domingo' => 'Dom'
       }
 
       prof_list = professionals.map do |p|
@@ -397,21 +411,26 @@ class AiAssistantService
         plan_str = [
           particular ? 'Particular' : nil,
           plans.presence&.join(', ')
-        ].compact.join(' | ')
+        ].compact.join(', ')
 
         schedule = (p.schedule || {}).with_indifferent_access
-        active_days = day_labels.select { |k, _| schedule.dig(k, 'active').to_s == 'true' }.values
-        days_str = active_days.any? ? active_days.join(', ') : 'Consultar clinica'
+        schedule_parts = day_order.filter_map do |key|
+          day = schedule[key]
+          next unless day.present? && day['active'].to_s == 'true'
+          "#{day_labels[key]} #{day['start']}-#{day['end']}"
+        end
+        schedule_str = schedule_parts.any? ? schedule_parts.join(' | ') : 'Consultar clinica'
 
-        "• ID #{p.id}: #{p.name} (#{p.specialty}) | Aceita: #{plan_str.presence || 'Consultar clinica'} | Atende: #{days_str}"
+        lines = ["[ID #{p.id}] #{p.name} — #{p.specialty}"]
+        lines << "  Agenda: #{schedule_str}"
+        lines << "  Aceita: #{plan_str.presence || 'Consultar clinica'}"
+        lines.join("\n")
       end
 
-      svc_list = services.map do |s|
-        "• ID #{s.id}: #{s.name}"
-      end
+      svc_list = services.map { |s| "• ID #{s.id}: #{s.name}" }
 
       [
-        "Profissionais:", prof_list.presence&.join("\n") || "Nenhum profissional ativo.",
+        "Profissionais ativos:", prof_list.presence&.join("\n\n") || "Nenhum profissional ativo.",
         "\nServicos:", svc_list.presence&.join("\n") || "Nenhum servico ativo."
       ].join("\n")
 
