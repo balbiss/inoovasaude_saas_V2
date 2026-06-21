@@ -316,65 +316,79 @@ module Webhooks
             current_time = Time.now.to_f
             Rails.cache.write(debounce_key, current_time)
 
+            # Captura IDs primitivos antes de entrar na thread (evita stale class references após code reload)
+            _inbox_id        = inbox.id
+            _conversation_id = conversation.id
+            _debounce_key    = debounce_key
+            _current_time    = current_time
+            _remote_jid      = remote_jid
+            _remote_jid_alt  = remote_jid_alt.to_s
+
             # Processar com a IA em background para não travar o Webhook
             Thread.new do
-              begin
-                sleep 8 # Espera 8 segundos para agrupar mensagens sucessivas
+              Rails.application.reloader.wrap do
+                begin
+                  sleep 8 # Espera 8 segundos para agrupar mensagens sucessivas
 
-                # Se o valor no cache ainda for o mesmo, significa que não chegou nova mensagem nesses 8s
-                if Rails.cache.read(debounce_key) == current_time
-                  Rails.logger.info("Iniciando AiAssistantService para a conversa #{conversation.id}")
+                  # Se o valor no cache ainda for o mesmo, significa que não chegou nova mensagem nesses 8s
+                  if Rails.cache.read(_debounce_key) == _current_time
+                    Rails.logger.info("Iniciando AiAssistantService para a conversa #{_conversation_id}")
 
-                  # Chama a OpenAI e resolve as tools
-                  ai_service = AiAssistantService.new(inbox, conversation)
-                  ai_response_text = ai_service.process_message
+                    # Recarrega objetos do DB para evitar stale class references após code reload
+                    fresh_inbox        = Inbox.find(_inbox_id)
+                    fresh_conversation = Conversation.find(_conversation_id)
 
-                  if ai_response_text.present?
-                    # Avisamos ao sistema que a IA está respondendo para não dar trigger no fromMe
-                    Rails.cache.write("ai_is_replying_#{inbox.id}_#{remote_jid}", true, expires_in: 60.seconds)
+                    # Chama a OpenAI e resolve as tools
+                    ai_service = AiAssistantService.new(fresh_inbox, fresh_conversation)
+                    ai_response_text = ai_service.process_message
 
-                    # Separar resposta em múltiplos balões (parágrafos)
-                    paragraphs = ai_response_text.is_a?(Array) ? ai_response_text : ai_response_text.split("\n\n").reject(&:blank?)
+                    if ai_response_text.present?
+                      # Avisamos ao sistema que a IA está respondendo para não dar trigger no fromMe
+                      Rails.cache.write("ai_is_replying_#{fresh_inbox.id}_#{_remote_jid}", true, expires_in: 60.seconds)
 
-                    # Usa o JID @s.whatsapp.net para presence (LID não mostra digitando no WhatsApp)
-                    presence_jid = (remote_jid_alt.presence && remote_jid_alt.include?('@s.whatsapp.net')) ? remote_jid_alt : remote_jid
+                      # Separar resposta em múltiplos balões (parágrafos)
+                      paragraphs = ai_response_text.is_a?(Array) ? ai_response_text : ai_response_text.split("\n\n").reject(&:blank?)
 
-                    paragraphs.each do |paragraph|
-                      # Simulador de digitando
-                      WhatsappBaileysService.new(inbox).send_presence_update(presence_jid, 'composing')
+                      # Usa o JID @s.whatsapp.net para presence (LID não mostra digitando no WhatsApp)
+                      presence_jid = (_remote_jid_alt.present? && _remote_jid_alt.include?('@s.whatsapp.net')) ? _remote_jid_alt : _remote_jid
 
-                      # Calcula tempo de digitação com base no tamanho (mais realista)
-                      typing_time = [(paragraph.length / 15.0).round, 3].max
-                      typing_time = [typing_time, 15].min
-                      sleep typing_time
+                      paragraphs.each do |paragraph|
+                        # Simulador de digitando
+                        WhatsappBaileysService.new(fresh_inbox).send_presence_update(presence_jid, 'composing')
 
-                      # Renova o aviso para garantir que o echo da msg dê tempo de chegar
-                      Rails.cache.write("ai_is_replying_#{inbox.id}_#{remote_jid}", true, expires_in: 30.seconds)
+                        # Calcula tempo de digitação com base no tamanho (mais realista)
+                        typing_time = [(paragraph.length / 15.0).round, 3].max
+                        typing_time = [typing_time, 15].min
+                        sleep typing_time
 
-                      # Para de digitar
-                      WhatsappBaileysService.new(inbox).send_presence_update(presence_jid, 'paused')
+                        # Renova o aviso para garantir que o echo da msg dê tempo de chegar
+                        Rails.cache.write("ai_is_replying_#{fresh_inbox.id}_#{_remote_jid}", true, expires_in: 30.seconds)
 
-                      # Envia a resposta de volta pro WhatsApp e captura o ID do Baileys
-                      baileys_id = WhatsappBaileysService.new(inbox).send_message(remote_jid, paragraph.strip)
+                        # Para de digitar
+                        WhatsappBaileysService.new(fresh_inbox).send_presence_update(presence_jid, 'paused')
 
-                      # Salva a mensagem da IA usando o ID do Baileys como source_id
-                      # para que o echo fromMe seja reconhecido e não ative o cooldown
-                      Message.create!(
-                        account: conversation.account,
-                        conversation: conversation,
-                        text: paragraph.strip,
-                        sender_type: 'User',
-                        sender_id: nil,
-                        source_id: baileys_id.present? ? baileys_id : "ai_#{SecureRandom.hex(8)}",
-                        status: :delivered
-                      )
+                        # Envia a resposta de volta pro WhatsApp e captura o ID do Baileys
+                        baileys_id = WhatsappBaileysService.new(fresh_inbox).send_message(_remote_jid, paragraph.strip)
+
+                        # Salva a mensagem da IA usando o ID do Baileys como source_id
+                        # para que o echo fromMe seja reconhecido e não ative o cooldown
+                        Message.create!(
+                          account: fresh_conversation.account,
+                          conversation: fresh_conversation,
+                          text: paragraph.strip,
+                          sender_type: 'User',
+                          sender_id: nil,
+                          source_id: baileys_id.present? ? baileys_id : "ai_#{SecureRandom.hex(8)}",
+                          status: :delivered
+                        )
+                      end
                     end
+                  else
+                    Rails.logger.info("Debounce cancelou a execução da IA (nova mensagem recebida) para #{_remote_jid}")
                   end
-                else
-                  Rails.logger.info("Debounce cancelou a execução da IA (nova mensagem recebida) para #{remote_jid}")
+                rescue => e
+                  Rails.logger.error("Erro fatal no AiAssistantService: #{e.message}")
                 end
-              rescue => e
-                Rails.logger.error("Erro fatal no AiAssistantService: #{e.message}")
               end
             end
           end
