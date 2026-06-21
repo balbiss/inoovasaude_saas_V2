@@ -92,8 +92,9 @@ const deleteService = async (id) => {
 
     <div v-else class="services-list">
       <div v-for="svc in filtered" :key="svc.id" class="service-card">
-        <div class="service-icon">
-          <FlaskConical class="icon-md" />
+        <div class="service-thumb">
+          <img v-if="svc.image_url" :src="svc.image_url" :alt="svc.name" class="thumb-img" />
+          <div v-else class="thumb-icon"><FlaskConical class="icon-md" /></div>
         </div>
         <div class="service-info">
           <h3>{{ svc.name }}</h3>
@@ -137,7 +138,9 @@ const deleteService = async (id) => {
 .empty-icon { width: 48px; height: 48px; margin: 0 auto 12px; color: var(--text-muted); display: block; }
 .services-list { display: flex; flex-direction: column; gap: 12px; }
 .service-card { background: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: 12px; padding: 16px 20px; display: flex; align-items: flex-start; gap: 16px; }
-.service-icon { width: 44px; height: 44px; border-radius: 10px; background: #ecfdf5; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.service-thumb { width: 64px; height: 64px; border-radius: 10px; overflow: hidden; flex-shrink: 0; }
+.thumb-img { width: 100%; height: 100%; object-fit: cover; }
+.thumb-icon { width: 100%; height: 100%; background: #ecfdf5; display: flex; align-items: center; justify-content: center; }
 .icon-md { width: 22px; height: 22px; color: #065f46; }
 .service-info { flex: 1; }
 .service-info h3 { font-size: 1rem; font-weight: 600; color: var(--text-main); margin: 0 0 4px; }
