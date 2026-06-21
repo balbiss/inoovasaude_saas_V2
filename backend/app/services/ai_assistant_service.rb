@@ -191,12 +191,12 @@ class AiAssistantService
          Só chame check_availability após calcular a data exata em YYYY-MM-DD.
       6. SEMPRE chame check_availability(professional_id, date) com YYYY-MM-DD. NUNCA invente horários.
       7. Se não houver horários, informe e pergunte se quer tentar outro dia.
-      8. Apresente os horários disponíveis de forma organizada e visual, respeitando os grupos manhã/tarde retornados pela ferramenta.
-         Exemplo: "Temos os seguintes horários disponíveis:\n\n🌅 Manhã: 08:00 | 09:00 | 10:00\n☀️ Tarde: 14:00 | 15:00\n\nQual você prefere? 😊"
-      9. Quando o paciente escolher um horário da lista já apresentada:
-         • NÃO chame check_availability novamente — o horário já foi confirmado como disponível.
-         • Vá direto para a confirmação: "Posso confirmar: [nome] com [profissional] no dia [data] às [hora]?"
-      10. Após confirmação explícita do paciente ("sim", "pode ser", "confirma", etc.), chame book_appointment.
+      8. Apresente os horários de forma organizada separando manha e tarde, sem emojis.
+         Exemplo: "Temos os seguintes horarios:\n\nManha: 08:00 | 09:00 | 10:00\nTarde: 14:00 | 15:00\n\nQual voce prefere?"
+      9. Quando o paciente escolher um horario da lista ja apresentada:
+         • NAO chame check_availability novamente — o horario ja foi confirmado como disponivel.
+         • Va direto para a confirmacao: "Posso confirmar: [nome] com [profissional] no dia [data] as [hora]?"
+      10. Apos confirmacao explicita do paciente ("sim", "pode ser", "confirma", etc.), chame book_appointment.
 
       ═══ REGRA DE RETORNO ═══
       • Retorno só é permitido se o paciente tiver comparecido a uma consulta anterior.
@@ -210,9 +210,8 @@ class AiAssistantService
         Após cancelar, sempre ofereça remarcar.
 
       ═══ ENCERRAMENTO ═══
-      • Após agendar com sucesso: aplique a etiqueta "consulta_agendada" com apply_label.
-        Isso pausará a IA automaticamente.
-      • Se o paciente pedir para falar com uma pessoa: aplique "com_atendente" e transfira.
+      • Apos agendar com sucesso: confirme o agendamento de forma cordial e pergunte se o paciente precisa de mais alguma coisa. A IA continua ativa.
+      • Se o paciente pedir para falar com uma pessoa/secretaria/atendente: aplique "com_atendente" e transfira para humano.
 
       REGRAS ABSOLUTAS:
       ✗ NUNCA mencione duração de consulta, preço ou valores ao paciente.
@@ -321,7 +320,7 @@ class AiAssistantService
           parameters: {
             type: "object",
             properties: {
-              label:  { type: "string", enum: ["consulta_agendada", "com_atendente", "paciente_quente", "paciente_frio", "sem_agenda"] },
+              label:  { type: "string", enum: ["com_atendente", "paciente_quente", "paciente_frio", "sem_agenda"] },
               reason: { type: "string", description: "Motivo breve" }
             },
             required: ["label"]
@@ -408,8 +407,8 @@ class AiAssistantService
         morning   = slots.select { |s| s < "12:00" }
         afternoon = slots.reject { |s| s < "12:00" }
         lines = ["Horários disponíveis para #{professional.name} em #{date.strftime('%d/%m/%Y')}:"]
-        lines << "🌅 Manhã: #{morning.join(' | ')}"   if morning.any?
-        lines << "☀️ Tarde: #{afternoon.join(' | ')}" if afternoon.any?
+        lines << "Manha: #{morning.join(' | ')}"   if morning.any?
+        lines << "Tarde: #{afternoon.join(' | ')}" if afternoon.any?
         lines.join("\n")
       end
 
@@ -476,7 +475,7 @@ class AiAssistantService
 
       contact.update!(funnel_stage: 'agendado')
 
-      "✅ Consulta agendada! ID #{appt.id} — #{professional.name} em #{Date.parse(date_str).strftime('%d/%m/%Y')} às #{start_time}. A confirmação será enviada por WhatsApp em seguida."
+      "Consulta agendada com sucesso. ID #{appt.id} — #{professional.name} em #{Date.parse(date_str).strftime('%d/%m/%Y')} as #{start_time}."
 
     when "find_patient_appointments"
       cpf_clean = args['cpf'].to_s.gsub(/\D/, '')
@@ -508,7 +507,7 @@ class AiAssistantService
       appt.update_columns(status: 'cancelado', updated_at: Time.current)
       AppointmentStatusNotificationJob.perform_later(appt.id, old_status, 'cancelado')
 
-      "✅ Consulta ID #{appt.id} cancelada. O paciente receberá uma notificação pelo WhatsApp."
+      "Consulta ID #{appt.id} cancelada com sucesso. O paciente sera notificado pelo WhatsApp."
 
     when "apply_label"
       label_name = args['label'].to_s.strip.downcase
@@ -530,9 +529,9 @@ class AiAssistantService
         tags: @conversation.reload.tags.map { |t| { id: t.id, name: t.name, color: t.color } }
       })
 
-      if %w[consulta_agendada com_atendente].include?(label_name)
+      if label_name == 'com_atendente'
         pause_ai_permanently
-        RoundRobinAssignmentService.assign_next(@conversation.reload) if label_name == 'com_atendente'
+        RoundRobinAssignmentService.assign_next(@conversation.reload)
       end
 
       "Etiqueta '#{label_name}' aplicada."
