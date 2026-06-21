@@ -1,7 +1,7 @@
 <script setup>
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted, computed, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
-import { ArrowLeft, Save, CalendarDays } from 'lucide-vue-next'
+import { ArrowLeft, Save, CalendarDays, AlertTriangle, Info } from 'lucide-vue-next'
 import api from '../api'
 import { useAppointmentsStore } from '../store/appointments'
 import { storeToRefs } from 'pinia'
@@ -10,11 +10,20 @@ import Swal from 'sweetalert2'
 const router = useRouter()
 const route = useRoute()
 const appointmentsStore = useAppointmentsStore()
-const { contacts, professionals, services } = storeToRefs(appointmentsStore)
+const { contacts, professionals, services, appointments } = storeToRefs(appointmentsStore)
 
 const isEditing = computed(() => !!route.params.id)
 const isLoading = ref(false)
 const isSubmitting = ref(false)
+
+// CPF search
+const cpfSearch = ref('')
+const cpfContact = computed(() => {
+  if (!cpfSearch.value || cpfSearch.value.length < 3) return null
+  const digits = cpfSearch.value.replace(/\D/g, '')
+  return contacts.value.find(c => c.cpf && c.cpf.replace(/\D/g, '') === digits) || null
+})
+watch(cpfContact, (c) => { if (c) form.value.contact_id = c.id })
 
 const form = ref({
   contact_id: '',
@@ -27,6 +36,26 @@ const form = ref({
   consultation_type: 'presencial',
   notes: ''
 })
+
+// Avisos baseados no paciente selecionado
+const selectedContact = computed(() => contacts.value.find(c => c.id === Number(form.value.contact_id)))
+
+const pendingAppointment = computed(() => {
+  if (!form.value.contact_id || isEditing.value) return null
+  return appointments.value.find(a =>
+    a.contact_id === Number(form.value.contact_id) &&
+    ['agendado', 'confirmado'].includes(a.status)
+  ) || null
+})
+
+const lastDoneAppointment = computed(() => {
+  if (!form.value.contact_id) return null
+  return appointments.value
+    .filter(a => a.contact_id === Number(form.value.contact_id) && a.status === 'compareceu')
+    .sort((a, b) => new Date(b.appointment_date) - new Date(a.appointment_date))[0] || null
+})
+
+const formatDate = (d) => d ? new Date(d + 'T00:00:00').toLocaleDateString('pt-BR') : ''
 
 const selectedProfessional = computed(() =>
   professionals.value.find(p => p.id === Number(form.value.professional_id))
@@ -47,7 +76,10 @@ const autoFillEndTime = () => {
 }
 
 onMounted(async () => {
-  await appointmentsStore.fetchMetaData()
+  await Promise.all([
+    appointmentsStore.fetchMetaData(),
+    appointmentsStore.fetchAppointments(),
+  ])
   if (route.params.id) {
     isLoading.value = true
     try {
@@ -143,6 +175,47 @@ const save = async () => {
 
       <!-- Main form -->
       <div class="form-card">
+
+        <!-- Busca por CPF -->
+        <div class="cpf-search-row">
+          <div class="form-group" style="flex:1">
+            <label>Buscar paciente por CPF</label>
+            <input
+              v-model="cpfSearch"
+              type="text"
+              placeholder="000.000.000-00"
+              maxlength="14"
+            />
+          </div>
+          <div v-if="cpfContact" class="cpf-found">
+            <Info :size="15" /> Encontrado: <strong>{{ cpfContact.name }}</strong>
+          </div>
+          <div v-else-if="cpfSearch.length >= 3" class="cpf-not-found">
+            <AlertTriangle :size="15" /> CPF não cadastrado
+          </div>
+        </div>
+
+        <!-- Aviso: consulta pendente -->
+        <div v-if="pendingAppointment" class="alert-banner warning">
+          <AlertTriangle :size="16" />
+          <span>Este paciente já tem uma consulta <strong>{{ pendingAppointment.status }}</strong> em
+            <strong>{{ formatDate(pendingAppointment.appointment_date) }}</strong>.
+            Cancele ou finalize antes de agendar uma nova.
+          </span>
+        </div>
+
+        <!-- Info: última consulta realizada (útil para retorno) -->
+        <div v-if="form.status === 'retorno' && lastDoneAppointment" class="alert-banner info">
+          <Info :size="16" />
+          <span>Última consulta realizada em <strong>{{ formatDate(lastDoneAppointment.appointment_date) }}</strong>.
+            O retorno é válido conforme o prazo configurado na clínica.
+          </span>
+        </div>
+        <div v-else-if="form.status === 'retorno' && !lastDoneAppointment" class="alert-banner warning">
+          <AlertTriangle :size="16" />
+          <span>Nenhuma consulta realizada encontrada para este paciente. O backend validará ao salvar.</span>
+        </div>
+
         <div class="form-grid">
           <div class="form-group full">
             <label>Paciente *</label>
@@ -252,6 +325,17 @@ const save = async () => {
 .btn-primary { display: flex; align-items: center; gap: 6px; background: var(--primary); color: #fff; border: none; border-radius: 8px; padding: 10px 20px; font-size: 0.9rem; font-weight: 600; cursor: pointer; }
 .btn-primary:disabled { opacity: 0.6; cursor: not-allowed; }
 .btn-secondary { background: var(--bg-tertiary); border: 1px solid var(--border-color); border-radius: 8px; padding: 10px 20px; font-size: 0.9rem; cursor: pointer; color: var(--text-main); }
+/* CPF search */
+.cpf-search-row { display: flex; align-items: flex-end; gap: 12px; margin-bottom: 16px; padding-bottom: 16px; border-bottom: 1px solid var(--border-color); }
+.cpf-found { display: flex; align-items: center; gap: 6px; font-size: 0.85rem; color: #065f46; background: #d1fae5; border: 1px solid #6ee7b7; border-radius: 8px; padding: 8px 12px; white-space: nowrap; }
+.cpf-not-found { display: flex; align-items: center; gap: 6px; font-size: 0.85rem; color: #92400e; background: #fef3c7; border: 1px solid #fcd34d; border-radius: 8px; padding: 8px 12px; white-space: nowrap; }
+
+/* Alert banners */
+.alert-banner { display: flex; align-items: flex-start; gap: 10px; padding: 12px 14px; border-radius: 8px; font-size: 0.85rem; margin-bottom: 14px; line-height: 1.5; }
+.alert-banner.warning { background: #fff7ed; border: 1px solid #fed7aa; color: #92400e; }
+.alert-banner.info { background: #eff6ff; border: 1px solid #bfdbfe; color: #1e40af; }
+.alert-banner svg { flex-shrink: 0; margin-top: 1px; }
+
 .icon-sm { width: 16px; height: 16px; }
 @media (max-width: 768px) {
   .form-layout { flex-direction: column; }

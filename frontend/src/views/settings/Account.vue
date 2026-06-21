@@ -36,6 +36,40 @@
           <button class="btn btn-primary" @click="updateSettings">Atualizar configurações</button>
         </div>
 
+        <!-- Regras de Agendamento -->
+        <div class="settings-card">
+          <h2 class="section-title">Regras de Agendamento</h2>
+          <p class="section-description">Controle como os agendamentos podem ser feitos para os pacientes.</p>
+
+          <div class="form-group toggle-group">
+            <label class="toggle-label">
+              <input type="checkbox" v-model="blockDoubleBooking" class="toggle-input" />
+              <span class="toggle-track">
+                <span class="toggle-thumb"></span>
+              </span>
+              <span class="toggle-text">
+                <strong>Bloquear consulta duplicada</strong><br>
+                <small>Paciente com consulta agendada ou confirmada não pode marcar outra enquanto ela não for finalizada ou cancelada.</small>
+              </span>
+            </label>
+          </div>
+
+          <div class="form-group" style="margin-top:20px">
+            <label>Prazo de retorno (dias)</label>
+            <p class="field-hint">Quantos dias após uma consulta realizada o paciente pode marcar um retorno. Após esse prazo, precisa agendar uma nova consulta.</p>
+            <div class="days-input-row">
+              <input type="range" v-model.number="retornoDays" min="1" max="180" step="1" class="days-slider" />
+              <div class="days-value-box">
+                <input type="number" v-model.number="retornoDays" min="1" max="180" class="days-number" />
+                <span class="days-unit">dias</span>
+              </div>
+            </div>
+            <p class="days-hint">Atual: retorno permitido em até <strong>{{ retornoDays }} dias</strong> após a última consulta realizada.</p>
+          </div>
+
+          <button class="btn btn-primary" @click="updateSettings">Salvar regras</button>
+        </div>
+
         <!-- Seção de Segurança -->
         <div class="settings-card">
           <h2 class="section-title">Segurança</h2>
@@ -100,6 +134,8 @@ import Swal from 'sweetalert2'
 const accountName = ref('')
 const userEmail = ref('')
 const siteLanguage = ref('pt-BR')
+const retornoDays = ref(30)
+const blockDoubleBooking = ref(true)
 
 const subscriptionStatus = ref('pending')
 const planName = ref('Plano Premium')
@@ -120,11 +156,13 @@ const passwordForm = ref({
 const fetchAccountData = async () => {
   try {
     const response = await api.get('/account')
-    accountName.value = response.data.account_name
-    userEmail.value = response.data.email
+    accountName.value       = response.data.account_name
+    userEmail.value         = response.data.email
     subscriptionStatus.value = response.data.subscription_status
-    trialEndsAt.value = response.data.trial_ends_at
-    planName.value = response.data.plan_name
+    trialEndsAt.value       = response.data.trial_ends_at
+    planName.value          = response.data.plan_name
+    retornoDays.value       = response.data.retorno_days ?? 30
+    blockDoubleBooking.value = response.data.block_double_booking !== false
     
     // Se o trial_ends_at for no futuro e não for active, mostramos como trialing no visual
     if (subscriptionStatus.value !== 'active' && trialEndsAt.value && new Date(trialEndsAt.value) > new Date()) {
@@ -200,7 +238,11 @@ const updatePassword = async () => {
 
 const updateSettings = async () => {
   try {
-    const response = await api.put('/account', { account: { name: accountName.value } })
+    const response = await api.put('/account', { account: {
+      name: accountName.value,
+      retorno_days: retornoDays.value,
+      block_double_booking: blockDoubleBooking.value,
+    } })
     Swal.fire({
       icon: 'success',
       title: 'Configurações Salvas!',
@@ -454,4 +496,28 @@ const manageSubscription = async () => {
     }
   }
 }
+
+/* Regras de Agendamento */
+.toggle-group { margin-bottom: 4px; }
+.toggle-label { display: flex; align-items: flex-start; gap: 12px; cursor: pointer; }
+.toggle-input { display: none; }
+.toggle-track {
+  width: 40px; height: 22px; background: #d1d5db; border-radius: 11px;
+  position: relative; flex-shrink: 0; margin-top: 2px; transition: background 0.2s;
+}
+.toggle-track .toggle-thumb {
+  position: absolute; top: 3px; left: 3px; width: 16px; height: 16px;
+  background: white; border-radius: 50%; transition: left 0.2s;
+}
+.toggle-input:checked ~ .toggle-track { background: #0d9488; }
+.toggle-input:checked ~ .toggle-track .toggle-thumb { left: 21px; }
+.toggle-text { font-size: 0.875rem; color: var(--text-main); line-height: 1.5; }
+.toggle-text small { color: var(--text-muted); font-size: 0.8rem; }
+.field-hint { font-size: 0.8rem; color: var(--text-muted); margin: 4px 0 10px; }
+.days-input-row { display: flex; align-items: center; gap: 12px; }
+.days-slider { flex: 1; accent-color: #0d9488; cursor: pointer; }
+.days-value-box { display: flex; align-items: center; gap: 4px; }
+.days-number { width: 60px; padding: 6px 8px; border: 1px solid var(--border-color, #e5e7eb); border-radius: 6px; font-size: 0.9rem; text-align: center; background: var(--bg-primary, #fff); color: var(--text-main); }
+.days-unit { font-size: 0.85rem; color: var(--text-muted); }
+.days-hint { font-size: 0.82rem; color: var(--text-muted); margin-top: 8px; }
 </style>

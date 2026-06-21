@@ -104,12 +104,48 @@ class AppointmentsController < ApplicationController
 
   # POST /appointments
   def create
-    # Try to use current_user's account, fallback to first account or 1 if not available
-    account = current_user&.account || Account.first || Account.new(id: 1)
-    
+    account = current_user.account
+
     @appointment = Appointment.new(appointment_params)
     @appointment.account_id ||= account.id
-    @appointment.user_id ||= current_user.id
+    @appointment.user_id    ||= current_user.id
+
+    if @appointment.contact_id.present?
+      contact_appointments = account.appointments.where(contact_id: @appointment.contact_id)
+
+      # Regra 1: bloquear duplo agendamento (consulta já pendente)
+      if account.block_double_booking != false
+        pending = contact_appointments.where(status: %w[agendado confirmado]).exists?
+        if pending
+          return render json: {
+            errors: ['Este paciente já tem uma consulta pendente (agendada ou confirmada). Cancele ou finalize a consulta atual antes de agendar uma nova.']
+          }, status: :unprocessable_entity
+        end
+      end
+
+      # Regra 2: prazo de retorno a partir da última consulta realizada
+      if @appointment.status == 'retorno'
+        retorno_days = (account.retorno_days || 30).to_i
+        last_done = contact_appointments
+          .where(status: 'compareceu')
+          .order(appointment_date: :desc)
+          .first
+
+        if last_done.nil?
+          return render json: {
+            errors: ['Não há consulta anterior registrada como realizada para este paciente. O retorno só pode ser agendado após uma consulta concluída.']
+          }, status: :unprocessable_entity
+        end
+
+        days_since = (Date.current - last_done.appointment_date.to_date).to_i
+        if days_since > retorno_days
+          deadline = (last_done.appointment_date.to_date + retorno_days.days).strftime('%d/%m/%Y')
+          return render json: {
+            errors: ["O prazo de retorno de #{retorno_days} dias expirou em #{deadline}. Agende uma nova consulta regular."]
+          }, status: :unprocessable_entity
+        end
+      end
+    end
 
     if @appointment.save
       render json: @appointment, status: :created, location: @appointment

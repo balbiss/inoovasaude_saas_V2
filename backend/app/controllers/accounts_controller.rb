@@ -6,15 +6,17 @@ class AccountsController < ApplicationController
     account  = current_user.account
     api_host = ENV['API_HOST'] || 'http://localhost:3000'
     render json: {
-      account_name:        account.name,
-      email:               current_user.email,
-      subscription_status: account.subscription_status || 'pending',
-      trial_ends_at:       account.trial_ends_at,
-      plan_name:           'Plano Premium',
-      portal_token:        account.portal_token,
-      asaas_configured:    account.asaas_api_key.present?,
-      asaas_api_key:       mask_key(account.asaas_api_key),
-      asaas_sandbox:       account.asaas_sandbox?,
+      account_name:          account.name,
+      email:                 current_user.email,
+      subscription_status:   account.subscription_status || 'pending',
+      trial_ends_at:         account.trial_ends_at,
+      plan_name:             'Plano Premium',
+      portal_token:          account.portal_token,
+      retorno_days:          account.retorno_days || 30,
+      block_double_booking:  account.block_double_booking != false,
+      asaas_configured:      account.asaas_api_key.present?,
+      asaas_api_key:         mask_key(account.asaas_api_key),
+      asaas_sandbox:         account.asaas_sandbox?,
       webhook_urls: {
         canal_pro: "#{api_host}/webhooks/canal_pro/#{account.portal_token}",
         zap:       "#{api_host}/webhooks/zap/#{account.portal_token}",
@@ -57,7 +59,7 @@ class AccountsController < ApplicationController
   private
 
   def account_params
-    params.require(:account).permit(:name, :asaas_api_key, :asaas_sandbox)
+    params.require(:account).permit(:name, :asaas_api_key, :asaas_sandbox, :retorno_days, :block_double_booking)
   end
 
   def mask_key(key)
