@@ -1,13 +1,20 @@
 <script setup>
 import { ref, onMounted, computed } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
-import { ArrowLeft, Save, Stethoscope, Calendar, Clock, X, Plus } from 'lucide-vue-next'
+import { ArrowLeft, Save, Stethoscope, Calendar, Clock, X, Plus, ShieldCheck } from 'lucide-vue-next'
 import api from '../api'
 import Swal from 'sweetalert2'
 
 const router = useRouter()
 const route = useRoute()
 const isEdit = computed(() => !!route.params.id)
+
+const HEALTH_PLANS = [
+  'Unimed', 'Bradesco Saúde', 'Amil', 'SulAmérica', 'Porto Seguro Saúde',
+  'Hapvida', 'NotreDame Intermédica', 'Prevent Senior', 'São Francisco Saúde',
+  'Golden Cross', 'Cassi', 'Geap', 'Assefaz', 'Fusex', 'Postal Saúde',
+  'Mediservice', 'Greenline', 'Omint', 'Allianz Saúde', 'Outro convênio',
+]
 
 const SPECIALTIES = [
   'Médico', 'Dentista', 'Psicólogo', 'Fisioterapeuta', 'Nutricionista',
@@ -46,6 +53,8 @@ const form = ref({
   schedule: DEFAULT_SCHEDULE(),
   lunch_break: { active: true, start: '12:00', end: '13:00' },
   blocked_dates: [],
+  accepted_plans: [],
+  accepts_particular: true,
 })
 
 const newBlockedDate = ref('')
@@ -61,6 +70,8 @@ onMounted(async () => {
         schedule: data.schedule || DEFAULT_SCHEDULE(),
         lunch_break: data.lunch_break || { active: true, start: '12:00', end: '13:00' },
         blocked_dates: data.blocked_dates || [],
+        accepted_plans: data.accepted_plans || [],
+        accepts_particular: data.accepts_particular !== false,
       }
     } catch {
       Swal.fire({ toast: true, position: 'top-end', icon: 'error', title: 'Erro ao carregar profissional.', showConfirmButton: false, timer: 3000 })
@@ -232,6 +243,29 @@ const save = async () => {
       </div>
     </div>
 
+    <!-- Convênios -->
+    <div class="form-card mt">
+      <div class="section-title"><ShieldCheck class="section-icon" /> Convênios e Formas de Pagamento</div>
+
+      <label class="toggle-label" style="margin-bottom:16px">
+        <input type="checkbox" v-model="form.accepts_particular" class="toggle-check" />
+        <span class="toggle-track"></span>
+        <span class="toggle-text">Aceita consulta particular</span>
+      </label>
+
+      <div class="plans-label">Convênios aceitos</div>
+      <div class="plans-grid">
+        <label v-for="plan in HEALTH_PLANS" :key="plan" class="plan-check">
+          <input
+            type="checkbox"
+            :value="plan"
+            v-model="form.accepted_plans"
+          />
+          <span class="plan-name">{{ plan }}</span>
+        </label>
+      </div>
+    </div>
+
     <!-- Datas Bloqueadas -->
     <div class="form-card mt">
       <div class="section-title"><Clock class="section-icon" /> Datas Bloqueadas / Folgas</div>
@@ -339,4 +373,13 @@ const save = async () => {
 .btn-primary:disabled { opacity: 0.6; cursor: not-allowed; }
 .btn-secondary { background: var(--bg-tertiary); border: 1px solid var(--border-color); border-radius: 8px; padding: 10px 20px; font-size: 0.9rem; cursor: pointer; color: var(--text-main); }
 .icon-sm { width: 16px; height: 16px; }
+
+/* Convênios */
+.plans-label { font-size: 0.78rem; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 12px; }
+.plans-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 8px; }
+.plan-check { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border: 1px solid var(--border-color); border-radius: 8px; cursor: pointer; transition: background 0.15s, border-color 0.15s; font-size: 0.88rem; color: var(--text-main); }
+.plan-check:hover { background: var(--bg-hover); }
+.plan-check input[type="checkbox"] { width: 15px; height: 15px; accent-color: var(--primary); cursor: pointer; flex-shrink: 0; }
+.plan-check input[type="checkbox"]:checked + .plan-name { color: var(--primary); font-weight: 600; }
+.plan-check:has(input:checked) { border-color: var(--primary); background: rgba(13,148,136,0.06); }
 </style>

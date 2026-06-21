@@ -41,10 +41,11 @@ class ProfessionalsController < ApplicationController
   def professional_params
     params.require(:professional).permit(
       :name, :specialty, :council_number, :phone, :email, :bio, :status,
-      :consultation_duration,
+      :consultation_duration, :accepts_particular,
       schedule: {},
       lunch_break: {},
-      blocked_dates: []
+      blocked_dates: [],
+      accepted_plans: []
     )
   end
 end
