@@ -176,11 +176,9 @@ class AiAssistantService
          NAO chame save_contact_data com apenas parte dos dados (ex: so o nome).
       6. Avance para o fluxo de agendamento.
 
-      IMPORTANTE — verificacao de historico:
-      O sistema identifica o paciente automaticamente pelo numero de telefone (nao pelo CPF).
-      O CPF e salvo apenas para o cadastro e para busca futura ("quando e minha consulta?").
-      As validacoes de duplo agendamento e prazo de retorno sao feitas automaticamente
-      pelo sistema no momento em que voce chamar book_appointment — voce nao precisa verificar manualmente.
+      IMPORTANTE — CPF como identificador unico:
+      O CPF e o identificador principal do paciente. O sistema usa o CPF para detectar o mesmo paciente mesmo que ele use um numero de WhatsApp diferente ou um nome abreviado.
+      As validacoes de duplo agendamento e prazo de retorno consultam o historico COMPLETO do CPF — o sistema bloqueia automaticamente ao chamar book_appointment, voce nao precisa verificar manualmente.
 
       ═══ FLUXO — AGENDAMENTO ═══
       1. Chame list_professionals_and_services para ver opções disponíveis.
@@ -362,18 +360,28 @@ class AiAssistantService
 
     when "save_contact_data"
       attrs = {}
-      attrs[:name]               = args['name'].strip            if args['name'].present?
+      attrs[:name]               = args['name'].strip              if args['name'].present?
       attrs[:cpf]                = args['cpf'].to_s.gsub(/\D/, '') if args['cpf'].present?
-      attrs[:health_plan]        = args['health_plan']           if args['health_plan'].present?
-      attrs[:health_plan_number] = args['health_plan_number']    if args['health_plan_number'].present?
+      attrs[:health_plan]        = args['health_plan']             if args['health_plan'].present?
+      attrs[:health_plan_number] = args['health_plan_number']      if args['health_plan_number'].present?
       if attrs[:name].present?
         parts = attrs[:name].split(' ', 2)
         attrs[:first_name] = parts[0]
         attrs[:last_name]  = parts[1] || ''
       end
       contact.update!(attrs)
-      Rails.logger.info("[AiAssistant] save_contact_data para contact##{contact.id}: #{attrs.keys.join(', ')}")
-      "Dados salvos: #{attrs.slice(:name, :cpf, :health_plan).map { |k, v| "#{k}=#{v}" }.join(', ')}."
+      Rails.logger.info("[AiAssistant] save_contact_data contact##{contact.id}: #{attrs.keys.join(', ')}")
+
+      # Verifica se CPF ja existe em outro contato (mesmo paciente, numero diferente)
+      result = "Dados salvos: #{attrs.slice(:name, :cpf, :health_plan).map { |k, v| "#{k}=#{v}" }.join(', ')}."
+      if attrs[:cpf].present?
+        canonical = account.contacts.where(cpf: attrs[:cpf]).where.not(id: contact.id).order(:created_at).first
+        if canonical
+          result += " ATENCAO: este CPF ja esta cadastrado no paciente '#{canonical.name}' (ID #{canonical.id}, fone #{canonical.phone}). O historico de agendamentos deste CPF sera verificado nas validacoes de duplo agendamento e retorno."
+          Rails.logger.info("[AiAssistant] CPF duplicado: contact##{contact.id} -> canonical##{canonical.id}")
+        end
+      end
+      result
 
     when "list_professionals_and_services"
       professionals = account.professionals.where(status: 'active').order(:name)
@@ -422,7 +430,7 @@ class AiAssistantService
 
     when "book_appointment"
       professional = account.professionals.find_by(id: args['professional_id'])
-      return "❌ Profissional não encontrado." unless professional
+      return "Profissional nao encontrado." unless professional
 
       status_val        = args['status'].presence&.to_s.downcase
       status_val        = 'agendado' unless %w[agendado retorno].include?(status_val)
@@ -430,32 +438,44 @@ class AiAssistantService
       date_str          = args['date'].to_s
       start_time        = args['start_time'].to_s
 
-      # Validação de duplo agendamento
+      # Resolve contato canonico pelo CPF — detecta mesmo paciente com numeros diferentes
+      cpf_clean = contact.cpf.to_s.gsub(/\D/, '').presence
+      if cpf_clean.present?
+        contact_ids = account.contacts.where(cpf: cpf_clean).pluck(:id)
+        # Contato canonico = o mais antigo com este CPF (tem o historico completo)
+        canonical_contact = account.contacts.where(cpf: cpf_clean).order(:created_at).first || contact
+      else
+        contact_ids = [contact.id]
+        canonical_contact = contact
+      end
+      Rails.logger.info("[AiAssistant] book_appointment CPF=#{cpf_clean.inspect} contact_ids=#{contact_ids.inspect} canonical=#{canonical_contact.id}")
+
+      # Validacao de duplo agendamento (verifica TODOS os contatos com mesmo CPF)
       if account.block_double_booking != false
         pending = account.appointments
-          .where(contact_id: contact.id, status: %w[agendado confirmado])
+          .where(contact_id: contact_ids, status: %w[agendado confirmado])
           .exists?
         if pending
-          return "❌ Este paciente já possui uma consulta pendente (agendada ou confirmada). Informe-o que é necessário cancelar ou aguardar a conclusão da consulta atual antes de agendar uma nova."
+          return "Este paciente ja possui uma consulta pendente (agendada ou confirmada). Nao e possivel agendar nova consulta enquanto houver uma em aberto — mesmo que use outro numero de telefone."
         end
       end
 
-      # Validação de retorno
+      # Validacao de retorno (verifica historico completo do CPF)
       if status_val == 'retorno'
         retorno_days = (account.retorno_days || 30).to_i
         last_done    = account.appointments
-          .where(contact_id: contact.id, status: 'compareceu')
+          .where(contact_id: contact_ids, status: 'compareceu')
           .order(appointment_date: :desc)
           .first
 
         if last_done.nil?
-          return "❌ Retorno não permitido: o paciente não possui consulta anterior registrada como realizada (compareceu). O retorno só pode ser agendado após uma consulta concluída."
+          return "Retorno nao permitido: nenhuma consulta anterior registrada como realizada para este CPF. O retorno so pode ser agendado apos uma consulta concluida."
         end
 
         days_since = (Date.current - last_done.appointment_date.to_date).to_i
         if days_since > retorno_days
           deadline = (last_done.appointment_date.to_date + retorno_days.days).strftime('%d/%m/%Y')
-          return "❌ Prazo de retorno expirado. A última consulta foi em #{last_done.appointment_date.strftime('%d/%m/%Y')} e o prazo de #{retorno_days} dias encerrou em #{deadline}. Oriente o paciente a agendar uma consulta regular."
+          return "Prazo de retorno expirado. A ultima consulta foi em #{last_done.appointment_date.strftime('%d/%m/%Y')} e o prazo de #{retorno_days} dias encerrou em #{deadline}. Oriente o paciente a agendar uma consulta regular."
         end
       end
 
@@ -469,7 +489,7 @@ class AiAssistantService
 
       appt = Appointment.create!(
         account_id:        account.id,
-        contact_id:        contact.id,
+        contact_id:        canonical_contact.id,
         professional_id:   professional.id,
         service_id:        args['service_id'],
         user_id:           @conversation.user_id,
@@ -481,28 +501,34 @@ class AiAssistantService
         notes:             "Agendado via assistente virtual"
       )
 
-      contact.update!(funnel_stage: 'agendado')
+      # Atualiza funil no contato canonico
+      canonical_contact.update!(funnel_stage: 'agendado')
 
       "Consulta agendada com sucesso. ID #{appt.id} — #{professional.name} em #{Date.parse(date_str).strftime('%d/%m/%Y')} as #{start_time}."
 
     when "find_patient_appointments"
       cpf_clean = args['cpf'].to_s.gsub(/\D/, '')
-      found_contact = account.contacts.find_by(cpf: cpf_clean)
-      return "Nenhum paciente encontrado com esse CPF." unless found_contact
+      # Busca todos os contatos com este CPF para retornar historico completo
+      contacts_with_cpf = account.contacts.where(cpf: cpf_clean)
+      return "Nenhum paciente encontrado com esse CPF." if contacts_with_cpf.empty?
+
+      found_contact = contacts_with_cpf.order(:created_at).first
+
+      all_ids = contacts_with_cpf.pluck(:id)
 
       appts = account.appointments
-        .where(contact_id: found_contact.id)
+        .where(contact_id: all_ids)
         .where('appointment_date >= ?', Date.current)
         .includes(:professional, :service)
         .order(appointment_date: :asc)
         .limit(5)
 
-      return "#{found_contact.name} não possui consultas agendadas." if appts.empty?
+      return "#{found_contact.name} nao possui consultas agendadas." if appts.empty?
 
       list = appts.map do |a|
         prof = a.professional&.name || '—'
         svc  = a.service&.name      || '—'
-        "• ID #{a.id}: #{a.appointment_date.strftime('%d/%m/%Y')} às #{a.start_time} com #{prof} — #{svc} (#{a.status})"
+        "• ID #{a.id}: #{a.appointment_date.strftime('%d/%m/%Y')} as #{a.start_time} com #{prof} — #{svc} (#{a.status})"
       end
       "Consultas de #{found_contact.name}:\n#{list.join("\n")}"
 
