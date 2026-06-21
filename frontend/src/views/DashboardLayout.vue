@@ -1,5 +1,5 @@
 <script setup>
-import { onMounted, onUnmounted, ref, computed } from 'vue'
+import { onMounted, onUnmounted, ref, computed, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import api from '../api'
 import Swal from 'sweetalert2'
@@ -38,15 +38,20 @@ import {
   Badge,
   TrendingUp,
   CreditCard,
-  BookOpen
+  BookOpen,
+  Menu,
+  X
 } from 'lucide-vue-next'
 
 const router = useRouter()
-useRoute()
+const route = useRoute()
 const isSettingsOpen = ref(false)
 const showUserMenu = ref(false)
 const autoOffline = ref(false)
 const isConversasOpen = ref(true)
+const isMobileMenuOpen = ref(false)
+const closeMobileMenu = () => { isMobileMenuOpen.value = false }
+watch(() => route.path, closeMobileMenu)
 
 // Notification Logic
 const notifications = ref([])
@@ -133,12 +138,26 @@ const fetchTags = async () => {
   }
 }
 
-const loadUser = () => {
+// Migra roles antigos antes de qualquer componente filho ler o localStorage
+;(() => {
   try {
     const stored = localStorage.getItem('user')
     if (stored) {
       const parsed = JSON.parse(stored)
-      currentUser.value = parsed
+      const MIGRATION = { empresa: 'secretaria', atendente: 'medico' }
+      if (MIGRATION[parsed.role]) {
+        parsed.role = MIGRATION[parsed.role]
+        localStorage.setItem('user', JSON.stringify(parsed))
+      }
+    }
+  } catch {}
+})()
+
+const loadUser = () => {
+  try {
+    const stored = localStorage.getItem('user')
+    if (stored) {
+      currentUser.value = JSON.parse(stored)
     }
   } catch (e) {
     console.error('Erro ao carregar dados do usuário', e)
@@ -146,7 +165,7 @@ const loadUser = () => {
 }
 
 const isAdminOrEmpresa = computed(() => {
-  return ['admin', 'empresa'].includes(currentUser.value.role)
+  return ['admin', 'secretaria'].includes(currentUser.value.role)
 })
 
 const userInitials = () => {
@@ -298,7 +317,7 @@ const handleLeadAtribuido = (e) => {
     toast: true,
     position: 'top-end',
     icon: 'info',
-    title: '📋 Novo lead atribuído a você!',
+    title: '📋 Novo paciente atribuído a você!',
     html: `<strong>${contact_name}</strong><br><small style="color:#6b7280">${origem}</small>`,
     showConfirmButton: true,
     confirmButtonText: 'Ver conversa',
@@ -337,7 +356,7 @@ const handleSnoozeExpired = (e) => {
     position:        'top-end',
     icon:            'info',
     title:           '⏰ Conversa reativada!',
-    html:            `<strong>${contact_name || 'Lead'}</strong><br><small style="color:#6b7280">O tempo de adiamento expirou — conversa reaberta.</small>`,
+    html:            `<strong>${contact_name || 'Paciente'}</strong><br><small style="color:#6b7280">O tempo de adiamento expirou — conversa reaberta.</small>`,
     showConfirmButton: true,
     confirmButtonText: 'Ver conversa',
     confirmButtonColor: '#4338ca',
@@ -367,8 +386,45 @@ const handleLogout = () => {
 
 <template>
   <div class="chatwoot-layout">
+    <!-- Mobile Top Header -->
+    <header class="mobile-header">
+      <button class="mobile-hamburger" @click="isMobileMenuOpen = !isMobileMenuOpen">
+        <Menu :size="22" />
+      </button>
+      <span class="mobile-logo">{{ accountName() }}</span>
+      <div class="notifications-wrapper">
+        <button class="icon-btn" @click="toggleNotifications">
+          <Bell class="icon" />
+          <span v-if="unreadCount > 0" class="notification-badge">{{ unreadCount }}</span>
+        </button>
+        <div v-if="isNotificationsOpen" class="notifications-dropdown notifications-dropdown--right">
+          <div class="notifications-header">
+            <h3>Notificações</h3>
+            <button class="btn-mark-all" v-if="unreadCount > 0" @click="markAllAsRead">Marcar todas como lidas</button>
+          </div>
+          <div class="notifications-list">
+            <div v-if="notifications.length === 0" class="no-notifications">Nenhuma notificação nova.</div>
+            <div v-for="notif in notifications" :key="notif.id" class="notification-item" :class="{ 'unread': !notif.read_at }" @click="markAsRead(notif)">
+              <div class="notif-content">
+                <h4>{{ notif.title }}</h4>
+                <p>{{ notif.message }}</p>
+                <span class="notif-time">{{ new Date(notif.created_at).toLocaleString([], {day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'}) }}</span>
+              </div>
+              <div v-if="!notif.read_at" class="unread-dot"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <!-- Mobile Sidebar Overlay -->
+    <div v-if="isMobileMenuOpen" class="sidebar-overlay" @click="closeMobileMenu"></div>
+
     <!-- Primary Sidebar -->
-    <aside class="sidebar">
+    <aside class="sidebar" :class="{ 'mobile-open': isMobileMenuOpen }">
+      <!-- Sidebar Close Button (mobile only) -->
+      <button class="sidebar-close-btn" @click="closeMobileMenu"><X :size="20" /></button>
+
       <!-- Workspace Header -->
       <div class="workspace-header">
         <div class="workspace-info">
@@ -385,12 +441,12 @@ const handleLogout = () => {
           <input type="text" placeholder="Pesquisar contatos..." />
         </div>
 
-        <div class="notifications-wrapper">
+        <div class="notifications-wrapper hide-on-mobile">
           <button class="icon-btn" @click="toggleNotifications">
             <Bell class="icon" />
             <span v-if="unreadCount > 0" class="notification-badge">{{ unreadCount }}</span>
           </button>
-          
+
           <div v-if="isNotificationsOpen" class="notifications-dropdown">
             <div class="notifications-header">
               <h3>Notificações</h3>
@@ -571,6 +627,31 @@ const handleLogout = () => {
     <main class="main-content">
       <router-view></router-view>
     </main>
+
+    <!-- Mobile Bottom Navigation -->
+    <nav class="mobile-bottom-nav">
+      <router-link to="/dashboard" class="bottom-nav-item" active-class="bottom-nav-item--active">
+        <BarChart2 :size="22" />
+        <span>Dashboard</span>
+      </router-link>
+      <router-link to="/conversas" class="bottom-nav-item" active-class="bottom-nav-item--active">
+        <MessageCircle :size="22" />
+        <span>Conversas</span>
+        <span v-if="unreadCount > 0" class="bottom-nav-badge">{{ unreadCount }}</span>
+      </router-link>
+      <router-link to="/agendamentos" class="bottom-nav-item" active-class="bottom-nav-item--active">
+        <CalendarDays :size="22" />
+        <span>Consultas</span>
+      </router-link>
+      <router-link to="/pacientes" class="bottom-nav-item" active-class="bottom-nav-item--active">
+        <Users :size="22" />
+        <span>Pacientes</span>
+      </router-link>
+      <button class="bottom-nav-item" @click="isMobileMenuOpen = !isMobileMenuOpen">
+        <Menu :size="22" />
+        <span>Menu</span>
+      </button>
+    </nav>
 
     <!-- Theme Command Palette -->
     <div class="palette-overlay" v-if="isThemePaletteOpen" @click.self="isThemePaletteOpen = false">
@@ -1167,6 +1248,143 @@ const handleLogout = () => {
         align-items: center;
       }
     }
+  }
+}
+
+/* ── Base: hide mobile-only elements on desktop ─────────────────── */
+.mobile-header { display: none; }
+.sidebar-close-btn { display: none; }
+.mobile-bottom-nav { display: none; }
+.hide-on-mobile { display: flex; }
+.notifications-dropdown--right { left: auto; right: 0; }
+
+/* ── Mobile / PWA Layout (≤ 768px) ──────────────────────────────── */
+@media (max-width: 768px) {
+  .mobile-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    height: 56px;
+    padding: 0 1rem;
+    background: var(--bg-secondary);
+    border-bottom: 1px solid var(--border-color);
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 100;
+  }
+
+  .mobile-hamburger {
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    padding: 0.4rem;
+    color: var(--text-main);
+    display: flex;
+    align-items: center;
+    border-radius: 6px;
+    &:hover { background: var(--bg-hover); }
+  }
+
+  .mobile-logo {
+    font-size: 1rem;
+    font-weight: 700;
+    color: var(--primary);
+  }
+
+  .sidebar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    height: 100vh;
+    z-index: 300;
+    transform: translateX(-100%);
+    transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+    box-shadow: 4px 0 20px rgba(0, 0, 0, 0.2);
+    overflow-y: auto;
+    &.mobile-open { transform: translateX(0); }
+  }
+
+  .sidebar-close-btn {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    width: 100%;
+    padding: 0.75rem 1rem 0;
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    color: var(--text-muted);
+    &:hover { color: var(--text-main); }
+  }
+
+  .sidebar-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.5);
+    z-index: 299;
+  }
+
+  .main-content {
+    padding-top: 56px;
+    padding-bottom: calc(64px + env(safe-area-inset-bottom, 0px));
+  }
+
+  .hide-on-mobile { display: none !important; }
+
+  .mobile-bottom-nav {
+    display: flex;
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: calc(64px + env(safe-area-inset-bottom, 0px));
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+    background: var(--bg-secondary);
+    border-top: 1px solid var(--border-color);
+    z-index: 100;
+    box-shadow: 0 -2px 8px rgba(0, 0, 0, 0.08);
+  }
+
+  .bottom-nav-item {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 3px;
+    padding: 0.25rem 0.1rem;
+    color: var(--text-muted);
+    font-size: 0.62rem;
+    font-weight: 500;
+    text-decoration: none;
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    position: relative;
+    transition: color 0.15s;
+
+    &:hover,
+    &.router-link-active,
+    &.bottom-nav-item--active { color: var(--primary); }
+  }
+
+  .bottom-nav-badge {
+    position: absolute;
+    top: 4px;
+    right: calc(50% - 20px);
+    background: #ef4444;
+    color: white;
+    font-size: 0.55rem;
+    font-weight: bold;
+    min-width: 14px;
+    height: 14px;
+    border-radius: 7px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0 3px;
   }
 }
 </style>

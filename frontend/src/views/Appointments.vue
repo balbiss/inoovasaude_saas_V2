@@ -8,13 +8,13 @@ import { storeToRefs } from 'pinia'
 
 const router = useRouter()
 const appointmentsStore = useAppointmentsStore()
-const { appointments, isLoading, contacts, properties, brokers } = storeToRefs(appointmentsStore)
+const { appointments, isLoading, contacts, professionals, services } = storeToRefs(appointmentsStore)
 
 // Filters
 const filterStatus = ref('')
-const filterProperty = ref('')
+const filterService = ref('')
 const filterDate = ref('')
-const filterBroker = ref('')
+const filterProfessional = ref('')
 const filterContact = ref('')
 
 const fetchAppointments = () => {
@@ -28,9 +28,9 @@ onMounted(() => {
 
 const clearFilters = () => {
   filterStatus.value = ''
-  filterProperty.value = ''
+  filterService.value = ''
   filterDate.value = ''
-  filterBroker.value = ''
+  filterProfessional.value = ''
   filterContact.value = ''
 }
 
@@ -72,12 +72,10 @@ const formatTime = (datetime) => {
         </div>
 
         <div class="input-group">
-          <label class="floating-label">Imóvel / Lançamento</label>
-          <select v-model="filterProperty">
+          <label class="floating-label">Serviço</label>
+          <select v-model="filterService">
             <option value="">Selecione</option>
-            <option v-for="p in properties" :key="p.id" :value="p.id">
-              AP{{ p.id }} - {{ p.title || p.address }}
-            </option>
+            <option v-for="s in services" :key="s.id" :value="s.id">{{ s.name }}</option>
           </select>
         </div>
 
@@ -88,10 +86,10 @@ const formatTime = (datetime) => {
         </div>
 
         <div class="input-group">
-          <label class="floating-label">Responsável</label>
-          <select v-model="filterBroker">
+          <label class="floating-label">Profissional</label>
+          <select v-model="filterProfessional">
             <option value="">Selecione</option>
-            <option v-for="b in brokers" :key="b" :value="b">{{ b }}</option>
+            <option v-for="p in professionals" :key="p.id" :value="p.id">{{ p.name }}</option>
           </select>
         </div>
 
@@ -121,8 +119,8 @@ const formatTime = (datetime) => {
             <th>Início</th>
             <th>Fim</th>
             <th>Cliente</th>
-            <th>Corretor</th>
-            <th>Imóvel / Lançamento</th>
+            <th>Profissional</th>
+            <th>Serviço</th>
             <th width="50"></th>
           </tr>
         </thead>
@@ -157,11 +155,8 @@ const formatTime = (datetime) => {
               </div>
               <span v-else>-</span>
             </td>
-            <td>{{ app.broker_name || '-' }}</td>
-            <td>
-              <a v-if="app.property" href="#" class="property-link">{{ app.property.title || `Imóvel #${app.property.id}` }}</a>
-              <span v-else>-</span>
-            </td>
+            <td>{{ app.professional?.name || '-' }}</td>
+            <td>{{ app.service?.name || '-' }}</td>
             <td class="actions-cell">
               <button class="btn-icon" @click="router.push(`/agendamentos/${app.id}/editar`)" title="Visualizar">
                 <Eye class="icon-sm" />
@@ -431,4 +426,45 @@ const formatTime = (datetime) => {
 .icon-sm { width: 16px; height: 16px; }
 .text-center { text-align: center; }
 .py-4 { padding-top: 1.5rem; padding-bottom: 1.5rem; }
+
+@media (max-width: 768px) {
+  .page-container { padding: 1rem; }
+
+  .page-header .header-content {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.75rem;
+  }
+
+  .filters-card {
+    padding: 1rem;
+    margin-bottom: 1rem;
+
+    .filters-grid {
+      grid-template-columns: 1fr;
+      gap: 1rem;
+      margin-bottom: 1rem;
+
+      .col-2 { grid-column: span 1; }
+    }
+
+    .filters-actions {
+      flex-direction: column;
+      gap: 0.5rem;
+      button { width: 100%; justify-content: center; }
+    }
+  }
+
+  .table-container { border-radius: 6px; }
+
+  .data-table {
+    display: block;
+    overflow-x: auto;
+    white-space: nowrap;
+    -webkit-overflow-scrolling: touch;
+    font-size: 0.8rem;
+
+    th, td { padding: 0.75rem 1rem; }
+  }
+}
 </style>

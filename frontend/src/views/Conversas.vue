@@ -31,6 +31,7 @@ import {
   Plus,
   ArrowRight,
   ChevronDown,
+  ChevronLeft,
   Sparkles,
   Loader2,
   BotOff,
@@ -53,6 +54,11 @@ import TransferModal from '../components/TransferModal.vue'
 
 const store = useConversationsStore()
 const route = useRoute()
+const mobileShowChat = ref(false)
+const selectConversation = (id) => {
+  store.setActiveConversation(id)
+  mobileShowChat.value = true
+}
 const newMessageText = ref('')
 const isPrivateMessage = ref(false)
 const isEmojiPickerOpen = ref(false)
@@ -96,21 +102,21 @@ const cancelScheduledMessage = async (msgId) => {
 }
 
 const DEPT_LABELS = {
-  corretor:    'Corretores',
+  medico:      'Médicos',
+  secretaria:  'Secretárias',
   suporte:     'Suporte',
   financeiro:  'Financeiro',
-  manutencao:  'Manutenção',
 }
 
 const agentsByDepartment = computed(() => {
   const groups = {}
   ;(store.agents || []).forEach(a => {
-    const dept = a.department || 'corretor'
+    const dept = a.role || 'medico'
     if (!groups[dept]) groups[dept] = []
     groups[dept].push(a)
   })
   // ordem fixa de exibição
-  return ['corretor', 'suporte', 'financeiro', 'manutencao']
+  return ['medico', 'secretaria', 'suporte', 'financeiro']
     .filter(d => groups[d]?.length)
     .map(d => ({ dept: d, label: DEPT_LABELS[d] || d, agents: groups[d] }))
 })
@@ -225,9 +231,8 @@ const isChargeModalOpen = ref(false)
 
 const currentUser = JSON.parse(localStorage.getItem('user') || '{}')
 const canGenerateCharge = computed(() => {
-  const dept = currentUser.department || 'corretor'
-  const role = currentUser.role || 'atendente'
-  return dept !== 'corretor' || role === 'empresa' || role === 'admin'
+  const role = currentUser.role || 'medico'
+  return role === 'secretaria' || role === 'admin'
 })
 const isFilterPopoverOpen = ref(false)
 const isSortPopoverOpen = ref(false)
@@ -440,7 +445,7 @@ onUnmounted(() => {
 <template>
   <div class="conversations-container">
     <!-- Middle Pane: Conversation List -->
-    <div class="conv-list-pane">
+    <div class="conv-list-pane" :class="{ 'mobile-hidden': mobileShowChat }">
       <div class="list-header">
         <div class="header-top">
           <h2 style="text-transform: capitalize;">{{ route.params.filter ? route.params.filter.replace('-', ' ') : 'Todas as conversas' }} <span class="badge">Abertas</span></h2>
@@ -492,7 +497,7 @@ onUnmounted(() => {
           v-for="conv in store.filteredConversations" 
           :key="conv.id" 
           :class="['conv-item', { unread: conv.unread > 0, active: conv.id === store.activeConversationId }]"
-          @click="store.setActiveConversation(conv.id)"
+          @click="selectConversation(conv.id)"
         >
           <div class="conv-avatar" :style="{ backgroundColor: conv.contact.avatarBg, color: 'white', overflow: 'hidden' }">
             <img v-if="conv.contact.avatar_url" :src="conv.contact.avatar_url" alt="avatar" style="width: 100%; height: 100%; object-fit: cover; border-radius: 50%;" />
@@ -529,9 +534,12 @@ onUnmounted(() => {
     </div>
 
     <!-- Main Chat Pane -->
-    <div class="chat-pane">
+    <div class="chat-pane" :class="{ 'mobile-active': mobileShowChat }">
       <div class="chat-header" v-if="store.activeConversation">
         <div class="chat-title">
+          <button class="mobile-back-btn" @click="mobileShowChat = false">
+            <ChevronLeft :size="22" />
+          </button>
           <div class="conv-avatar" :style="{ backgroundColor: store.activeConversation.contact.avatarBg, color: 'white', overflow: 'hidden' }">
             <img v-if="store.activeConversation.contact.avatar_url" :src="store.activeConversation.contact.avatar_url" alt="avatar" style="width: 100%; height: 100%; object-fit: cover; border-radius: 50%;" />
             <span v-else>{{ store.activeConversation.contact.avatarInitials }}</span>
@@ -780,17 +788,17 @@ onUnmounted(() => {
             <span class="attr-label">Profissão:</span>
             <span class="attr-val">{{ store.activeConversation.contact.profession }}</span>
           </div>
-          <div class="attr-row" v-if="store.activeConversation?.contact?.gross_income">
-            <span class="attr-label">Renda Bruta:</span>
-            <span class="attr-val">{{ new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(store.activeConversation.contact.gross_income) }}</span>
+          <div class="attr-row" v-if="store.activeConversation?.contact?.health_plan">
+            <span class="attr-label">Plano de Saúde:</span>
+            <span class="attr-val">{{ store.activeConversation.contact.health_plan }}</span>
           </div>
-          <div class="attr-row" v-if="store.activeConversation?.contact?.fgts_balance">
-            <span class="attr-label">Saldo FGTS:</span>
-            <span class="attr-val">{{ new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(store.activeConversation.contact.fgts_balance) }}</span>
+          <div class="attr-row" v-if="store.activeConversation?.contact?.allergies">
+            <span class="attr-label">Alergias:</span>
+            <span class="attr-val">{{ store.activeConversation.contact.allergies }}</span>
           </div>
-          <div class="attr-row" v-if="store.activeConversation?.contact?.dependents">
-            <span class="attr-label">Dependentes:</span>
-            <span class="attr-val">{{ store.activeConversation.contact.dependents }}</span>
+          <div class="attr-row" v-if="store.activeConversation?.contact?.health_notes">
+            <span class="attr-label">Obs. Saúde:</span>
+            <span class="attr-val">{{ store.activeConversation.contact.health_notes }}</span>
           </div>
           <div class="attr-row" v-if="store.activeConversation?.contact?.city">
             <span class="attr-label">Cidade/UF:</span>
@@ -2120,5 +2128,57 @@ onUnmounted(() => {
   margin-top: 0.25rem;
   color: #64748b;
   font-size: 0.8rem;
+}
+
+/* ── Mobile back button (hidden on desktop) ─── */
+.mobile-back-btn { display: none; }
+
+@media (max-width: 768px) {
+  .conversations-container {
+    position: relative;
+    overflow: hidden;
+  }
+
+  .conv-list-pane {
+    width: 100%;
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+    transform: translateX(0);
+    transition: transform 0.25s ease;
+    &.mobile-hidden { transform: translateX(-100%); }
+  }
+
+  .chat-pane {
+    position: absolute;
+    inset: 0;
+    z-index: 2;
+    transform: translateX(100%);
+    transition: transform 0.25s ease;
+    background: var(--bg-primary);
+    display: flex;
+    flex-direction: column;
+    &.mobile-active { transform: translateX(0); }
+  }
+
+  .details-pane { display: none !important; }
+
+  .mobile-back-btn {
+    display: flex;
+    align-items: center;
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    padding: 0.35rem;
+    color: var(--text-main);
+    margin-right: 0.25rem;
+    border-radius: 6px;
+    flex-shrink: 0;
+    &:hover { background: var(--bg-hover); }
+  }
+
+  .chat-messages { padding: 1rem; }
+
+  .chat-input-area { padding: 0.75rem 1rem; }
 }
 </style>

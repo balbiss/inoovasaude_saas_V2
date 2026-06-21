@@ -382,4 +382,12 @@ const save = async () => {
 .plan-check input[type="checkbox"] { width: 15px; height: 15px; accent-color: var(--primary); cursor: pointer; flex-shrink: 0; }
 .plan-check input[type="checkbox"]:checked + .plan-name { color: var(--primary); font-weight: 600; }
 .plan-check:has(input:checked) { border-color: var(--primary); background: rgba(13,148,136,0.06); }
+
+@media (max-width: 768px) {
+  .form-page { padding: 1rem; }
+  .form-grid { grid-template-columns: 1fr; }
+  .days-header, .day-row { grid-template-columns: 100px 60px 1fr 1fr; gap: 8px; padding: 8px 12px; font-size: 0.78rem; }
+  .form-actions { flex-direction: column; button { width: 100%; } }
+  .plans-grid { grid-template-columns: 1fr 1fr; }
+}
 </style>

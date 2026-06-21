@@ -2,9 +2,9 @@
 import { onMounted, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import {
-  Users, Flame, ThermometerSun, Snowflake, Calendar, CalendarCheck,
+  Users, Stethoscope, Calendar, CalendarCheck,
   CalendarDays, MessageCircle, UserCheck, TrendingUp, BarChart2,
-  CheckCircle, ChevronRight, Handshake, Phone, ArrowRight, Inbox
+  CheckCircle, ChevronRight, Phone, ArrowRight, Inbox, RefreshCw
 } from 'lucide-vue-next'
 import { Doughnut } from 'vue-chartjs'
 import { Chart as ChartJS, Title, Tooltip, Legend, ArcElement, CategoryScale } from 'chart.js'
@@ -24,25 +24,32 @@ const openConversation = (conversationId) => {
   router.push('/conversas')
 }
 
-const tempColor = (t) => {
-  if (!t) return { bg: '#f1f5f9', text: '#64748b', label: 'Sem temp.' }
-  const l = t.toLowerCase()
-  if (l === 'quente') return { bg: '#fef2f2', text: '#dc2626', label: 'Quente' }
-  if (l === 'morno')  return { bg: '#fffbeb', text: '#d97706', label: 'Morno'  }
-  return                     { bg: '#eff6ff', text: '#2563eb', label: 'Frio'   }
+const funnelLabel = (s) => {
+  const map = {
+    novo_paciente: 'Novo Paciente',
+    agendado:      'Agendado',
+    compareceu:    'Compareceu',
+    retorno:       'Retorno'
+  }
+  return map[s] || s || '—'
 }
 
-const kanbanLabel = (s) => {
-  const map = { lead: 'Novo Lead', visit: 'Visita Agendada', proposal: 'Proposta', won: 'Fechado' }
-  return map[s] || s || '—'
+const funnelBadge = (s) => {
+  const map = {
+    novo_paciente: { bg: '#eff6ff', text: '#2563eb' },
+    agendado:      { bg: '#fffbeb', text: '#d97706' },
+    compareceu:    { bg: '#f0fdfa', text: '#0f766e' },
+    retorno:       { bg: '#f5f3ff', text: '#7c3aed' }
+  }
+  return map[s] || { bg: '#f1f5f9', text: '#64748b' }
 }
 
 onMounted(() => store.fetchDashboard())
 
-const dashTitle    = computed(() => isOwner.value ? 'Dashboard Imobiliário' : 'Meu Painel')
+const dashTitle    = computed(() => isOwner.value ? 'Painel da Clínica' : 'Meu Painel')
 const dashSubtitle = computed(() => isOwner.value
-  ? 'Visão estratégica da sua imobiliária em tempo real.'
-  : 'Seus leads e atendimentos atribuídos a você.')
+  ? 'Visão estratégica da sua clínica em tempo real.'
+  : 'Seus pacientes e atendimentos atribuídos a você.')
 
 const chartOptions = {
   responsive: true,
@@ -56,16 +63,16 @@ const chartOptions = {
 const funnelTotal = computed(() => {
   const k = kpis.value?.kanban
   if (!k) return 1
-  return (k.lead + k.visit + k.proposal + k.won) || 1
+  return (k.novo_paciente + k.agendado + k.compareceu + k.retorno) || 1
 })
 
 const funnelItems = computed(() => {
   const k = kpis.value?.kanban || {}
   return [
-    { label: 'Novos Leads',      value: k.lead     || 0, color: '#6366f1', icon: Users },
-    { label: 'Visita Agendada',  value: k.visit    || 0, color: '#f59e0b', icon: Calendar },
-    { label: 'Proposta Feita',   value: k.proposal || 0, color: '#3b82f6', icon: Handshake },
-    { label: 'Negócio Fechado',  value: k.won      || 0, color: '#10b981', icon: CheckCircle }
+    { label: 'Novos Pacientes', value: k.novo_paciente || 0, color: '#6366f1', icon: Users },
+    { label: 'Agendado',        value: k.agendado      || 0, color: '#f59e0b', icon: Calendar },
+    { label: 'Compareceu',      value: k.compareceu    || 0, color: '#0d9488', icon: CheckCircle },
+    { label: 'Retorno',         value: k.retorno       || 0, color: '#8b5cf6', icon: Stethoscope }
   ]
 })
 </script>
@@ -100,15 +107,15 @@ const funnelItems = computed(() => {
 
     <template v-else>
 
-      <!-- Leads Atribuídos Hoje -->
+      <!-- Pacientes de Hoje -->
       <div class="section-label">
-        {{ isOwner ? 'Leads Chegaram Hoje' : 'Leads Atribuídos a Você Hoje' }}
+        {{ isOwner ? 'Pacientes de Hoje' : 'Pacientes Atribuídos a Você Hoje' }}
         <span class="today-count">{{ todayLeads.length }}</span>
       </div>
 
       <div v-if="todayLeads.length === 0" class="today-empty">
         <Inbox class="today-empty-ic" />
-        <p>{{ isOwner ? 'Nenhuma conversa nova chegou hoje ainda.' : 'Nenhum lead foi atribuído a você hoje ainda.' }}</p>
+        <p>{{ isOwner ? 'Nenhum contato novo chegou hoje ainda.' : 'Nenhum paciente foi atribuído a você hoje ainda.' }}</p>
       </div>
 
       <div v-else class="today-leads-grid">
@@ -124,16 +131,16 @@ const funnelItems = computed(() => {
           <div class="tlc-body">
             <div class="tlc-top">
               <span class="tlc-name">{{ lead.contact_name }}</span>
-              <span class="tlc-badge" :style="{ background: tempColor(lead.temperature).bg, color: tempColor(lead.temperature).text }">
-                {{ tempColor(lead.temperature).label }}
+              <span class="tlc-badge" :style="{ background: funnelBadge(lead.funnel_stage).bg, color: funnelBadge(lead.funnel_stage).text }">
+                {{ funnelLabel(lead.funnel_stage) }}
               </span>
             </div>
             <div class="tlc-phone" v-if="lead.contact_phone">
               <Phone class="tlc-icon" /> {{ lead.contact_phone }}
             </div>
-            <div class="tlc-intention" v-if="lead.intention">{{ lead.intention }}</div>
+            <div class="tlc-intention" v-if="lead.health_notes">{{ lead.health_notes }}</div>
             <div class="tlc-footer">
-              <span class="tlc-stage">{{ kanbanLabel(lead.kanban_status) }}</span>
+              <span class="tlc-stage">{{ funnelLabel(lead.funnel_stage) }}</span>
               <span class="tlc-agent" v-if="lead.assigned_to">→ {{ lead.assigned_to }}</span>
               <span class="tlc-time">{{ new Date(lead.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) }}</span>
             </div>
@@ -142,55 +149,51 @@ const funnelItems = computed(() => {
         </div>
       </div>
 
-      <!-- Row 1: Temperatura dos Leads -->
-      <div class="section-label mt-section">Termômetro de Leads</div>
+      <!-- Row 1: Funil Clínico -->
+      <div class="section-label mt-section">Funil de Pacientes</div>
       <div class="grid-4">
         <div class="kpi-card accent-blue">
           <div class="kpi-left">
             <div class="kpi-icon blue"><Users /></div>
             <div>
               <div class="kpi-val">{{ kpis.total_contacts }}</div>
-              <div class="kpi-lbl">Total de Contatos</div>
+              <div class="kpi-lbl">Total de Pacientes</div>
             </div>
           </div>
-          <div class="kpi-bar-mini">
-            <span class="dot red"></span><span class="mini-n">{{ kpis.temperature.quente }}</span>
-            <span class="dot amber"></span><span class="mini-n">{{ kpis.temperature.morno }}</span>
-            <span class="dot teal"></span><span class="mini-n">{{ kpis.temperature.frio }}</span>
-          </div>
+          <div class="kpi-sub">base total da clínica</div>
         </div>
 
-        <div class="kpi-card accent-red">
+        <div class="kpi-card accent-indigo">
           <div class="kpi-left">
-            <div class="kpi-icon red"><Flame /></div>
+            <div class="kpi-icon indigo"><Users /></div>
             <div>
-              <div class="kpi-val">{{ kpis.temperature.quente }}</div>
-              <div class="kpi-lbl">Leads Quentes</div>
+              <div class="kpi-val">{{ kpis.kanban?.novo_paciente || 0 }}</div>
+              <div class="kpi-lbl">Novos Pacientes</div>
             </div>
           </div>
-          <div class="kpi-badge hot">Alta prioridade</div>
+          <div class="kpi-badge human">Primeiro contato</div>
         </div>
 
         <div class="kpi-card accent-amber">
           <div class="kpi-left">
-            <div class="kpi-icon amber"><ThermometerSun /></div>
+            <div class="kpi-icon amber"><CalendarDays /></div>
             <div>
-              <div class="kpi-val">{{ kpis.temperature.morno }}</div>
-              <div class="kpi-lbl">Leads Mornos</div>
+              <div class="kpi-val">{{ kpis.kanban?.agendado || 0 }}</div>
+              <div class="kpi-lbl">Agendados</div>
             </div>
           </div>
-          <div class="kpi-badge warm">Nutrir</div>
+          <div class="kpi-badge warm">Consulta marcada</div>
         </div>
 
         <div class="kpi-card accent-teal">
           <div class="kpi-left">
-            <div class="kpi-icon teal"><Snowflake /></div>
+            <div class="kpi-icon teal"><CheckCircle /></div>
             <div>
-              <div class="kpi-val">{{ kpis.temperature.frio }}</div>
-              <div class="kpi-lbl">Leads Frios</div>
+              <div class="kpi-val">{{ kpis.kanban?.compareceu || 0 }}</div>
+              <div class="kpi-lbl">Compareceram</div>
             </div>
           </div>
-          <div class="kpi-badge cold">Reconquistar</div>
+          <div class="kpi-badge done">Atendidos</div>
         </div>
       </div>
 
@@ -224,7 +227,7 @@ const funnelItems = computed(() => {
             <div class="kpi-icon green"><CalendarDays /></div>
             <div>
               <div class="kpi-val">{{ kpis.appointments.upcoming }}</div>
-              <div class="kpi-lbl">Visitas Agendadas</div>
+              <div class="kpi-lbl">Consultas Agendadas</div>
             </div>
           </div>
           <div class="kpi-sub">{{ kpis.appointments.today }} hoje</div>
@@ -235,7 +238,7 @@ const funnelItems = computed(() => {
             <div class="kpi-icon indigo"><CalendarCheck /></div>
             <div>
               <div class="kpi-val">{{ kpis.appointments.done }}</div>
-              <div class="kpi-lbl">Visitas Realizadas</div>
+              <div class="kpi-lbl">Consultas Realizadas</div>
             </div>
           </div>
           <div class="kpi-badge done">Concluídas</div>
@@ -243,13 +246,13 @@ const funnelItems = computed(() => {
       </div>
 
       <!-- Row 3: Funil + Gráfico -->
-      <div class="section-label mt-section">Funil de Vendas & Origem dos Leads</div>
+      <div class="section-label mt-section">Funil Clínico & Origem dos Pacientes</div>
       <div class="grid-2-3">
 
         <!-- Funil -->
         <div class="panel">
           <div class="panel-head">
-            <BarChart2 class="ic" /> Funil de Vendas
+            <BarChart2 class="ic" /> Funil Clínico
           </div>
           <div class="funnel-list">
             <div v-for="item in funnelItems" :key="item.label" class="funnel-item">
@@ -277,7 +280,7 @@ const funnelItems = computed(() => {
         <!-- Doughnut Origem -->
         <div class="panel">
           <div class="panel-head">
-            <TrendingUp class="ic" /> Leads por Origem
+            <TrendingUp class="ic" /> Pacientes por Origem
           </div>
           <div class="chart-wrap" v-if="leadsBySourceData.labels[0] !== 'Sem dados'">
             <Doughnut :data="leadsBySourceData" :options="chartOptions" />
@@ -694,6 +697,13 @@ const funnelItems = computed(() => {
 @media (max-width: 1100px) {
   .grid-4 { grid-template-columns: repeat(2, 1fr); }
   .grid-2-3 { grid-template-columns: 1fr; }
+  .today-leads-grid { grid-template-columns: 1fr; }
+}
+
+@media (max-width: 768px) {
+  .grid-4 { grid-template-columns: repeat(2, 1fr); gap: 0.75rem; }
+  .grid-2-3 { grid-template-columns: 1fr; }
+  .skel-row { grid-template-columns: repeat(2, 1fr); }
   .today-leads-grid { grid-template-columns: 1fr; }
 }
 </style>

@@ -17,8 +17,8 @@ const showSort         = ref(false)
 const showMore         = ref(false)
 const showSendModal    = ref(false)
 const sendSearch       = ref('')
-const activeTemps      = ref([])          // temperature filter
-const sortBy           = ref('newest')    // newest | oldest | name_asc | name_desc
+const activeFunnels    = ref([])
+const sortBy           = ref('newest')
 
 const SORT_OPTIONS = [
   { value: 'newest',    label: 'Mais recentes' },
@@ -27,10 +27,11 @@ const SORT_OPTIONS = [
   { value: 'name_desc',label: 'Nome Z → A' },
 ]
 
-const TEMP_OPTIONS = [
-  { value: 'hot',  label: 'Quente', color: '#ef4444' },
-  { value: 'warm', label: 'Morno',  color: '#f59e0b' },
-  { value: 'cold', label: 'Frio',   color: '#6b7280' },
+const FUNNEL_OPTIONS = [
+  { value: 'novo_paciente', label: 'Novo Paciente', color: '#6366f1' },
+  { value: 'agendado',      label: 'Agendado',      color: '#f59e0b' },
+  { value: 'compareceu',   label: 'Compareceu',    color: '#0d9488' },
+  { value: 'retorno',      label: 'Retorno',        color: '#8b5cf6' },
 ]
 
 // ── Computed ─────────────────────────────────────────────────
@@ -49,9 +50,9 @@ const filteredContacts = computed(() => {
     )
   }
 
-  // temperature filter
-  if (activeTemps.value.length > 0) {
-    list = list.filter(c => activeTemps.value.includes(c.temperature))
+  // funnel stage filter
+  if (activeFunnels.value.length > 0) {
+    list = list.filter(c => activeFunnels.value.includes(c.funnel_stage))
   }
 
   // sort
@@ -65,7 +66,7 @@ const filteredContacts = computed(() => {
   return list
 })
 
-const activeFilterCount = computed(() => activeTemps.value.length)
+const activeFilterCount = computed(() => activeFunnels.value.length)
 const currentSortLabel  = computed(() => SORT_OPTIONS.find(o => o.value === sortBy.value)?.label || '')
 
 // ── Send-message modal ────────────────────────────────────────
@@ -86,14 +87,14 @@ const goToConversation = (contact) => {
 
 // ── Export CSV ────────────────────────────────────────────────
 const exportCsv = () => {
-  const header = ['Nome', 'Telefone', 'Email', 'Temperatura', 'Intenção', 'Origem']
+  const header = ['Nome', 'Telefone', 'Email', 'Estágio', 'Plano de Saúde', 'Origem']
   const rows = filteredContacts.value.map(c => [
     contactName(c),
-    c.phone  || '',
-    c.email  || '',
-    c.temperature || '',
-    c.intention   || '',
-    c.source      || '',
+    c.phone       || '',
+    c.email       || '',
+    c.funnel_stage || '',
+    c.health_plan  || '',
+    c.source       || '',
   ])
   const csv = [header, ...rows].map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\n')
   const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' })
@@ -105,12 +106,12 @@ const exportCsv = () => {
 }
 
 // ── Toggle helpers ────────────────────────────────────────────
-const toggleTemp = (v) => {
-  const i = activeTemps.value.indexOf(v)
-  i === -1 ? activeTemps.value.push(v) : activeTemps.value.splice(i, 1)
+const toggleFunnel = (v) => {
+  const i = activeFunnels.value.indexOf(v)
+  i === -1 ? activeFunnels.value.push(v) : activeFunnels.value.splice(i, 1)
 }
 
-const clearFilters = () => { activeTemps.value = []; showFilter.value = false }
+const clearFilters = () => { activeFunnels.value = []; showFilter.value = false }
 
 // ── Close popovers on outside click ──────────────────────────
 const closeAll = (e) => {
@@ -142,8 +143,8 @@ const getAvatarStyle = (name) => {
   return { backgroundColor: p.bg, color: p.color }
 }
 
-const tempColor = (t) => ({ hot: '#ef4444', warm: '#f59e0b', cold: '#6b7280' }[t] || '#e5e7eb')
-const tempLabel = (t) => ({ hot: 'Quente', warm: 'Morno', cold: 'Frio' }[t] || '')
+const funnelColor = (s) => ({ novo_paciente: '#6366f1', agendado: '#f59e0b', compareceu: '#0d9488', retorno: '#8b5cf6' }[s] || '#e5e7eb')
+const funnelLabelShort = (s) => ({ novo_paciente: 'Novo', agendado: 'Agendado', compareceu: 'Compareceu', retorno: 'Retorno' }[s] || s || '')
 </script>
 
 <template>
@@ -178,10 +179,10 @@ const tempLabel = (t) => ({ hot: 'Quente', warm: 'Morno', cold: 'Frio' }[t] || '
               <span>Filtrar por</span>
               <button v-if="activeFilterCount > 0" class="btn-link" @click="clearFilters">Limpar</button>
             </div>
-            <div class="popover-section-label">Temperatura</div>
-            <label v-for="t in TEMP_OPTIONS" :key="t.value" class="popover-check">
-              <div class="check-box" :class="{ checked: activeTemps.includes(t.value) }" @click="toggleTemp(t.value)">
-                <Check v-if="activeTemps.includes(t.value)" :size="10" />
+            <div class="popover-section-label">Estágio no Funil</div>
+            <label v-for="t in FUNNEL_OPTIONS" :key="t.value" class="popover-check">
+              <div class="check-box" :class="{ checked: activeFunnels.includes(t.value) }" @click="toggleFunnel(t.value)">
+                <Check v-if="activeFunnels.includes(t.value)" :size="10" />
               </div>
               <span class="temp-dot" :style="{ background: t.color }"></span>
               {{ t.label }}
@@ -247,7 +248,7 @@ const tempLabel = (t) => ({ hot: 'Quente', warm: 'Morno', cold: 'Frio' }[t] || '
       <span>{{ filteredContacts.length }} contato{{ filteredContacts.length !== 1 ? 's' : '' }}</span>
       <span v-if="activeFilterCount > 0 || searchQuery" class="filter-active-tag">
         Filtros ativos
-        <button @click="searchQuery = ''; activeTemps = []"><X :size="10" /></button>
+        <button @click="searchQuery = ''; activeFunnels = []"><X :size="10" /></button>
       </span>
       <span v-if="sortBy !== 'newest'" class="sort-tag">{{ currentSortLabel }}</span>
     </div>
@@ -282,8 +283,8 @@ const tempLabel = (t) => ({ hot: 'Quente', warm: 'Morno', cold: 'Frio' }[t] || '
           </div>
 
           <div class="contact-meta">
-            <span v-if="contact.temperature" class="temp-chip" :style="{ background: tempColor(contact.temperature) + '22', color: tempColor(contact.temperature) }">
-              {{ tempLabel(contact.temperature) }}
+            <span v-if="contact.funnel_stage" class="temp-chip" :style="{ background: funnelColor(contact.funnel_stage) + '22', color: funnelColor(contact.funnel_stage) }">
+              {{ funnelLabelShort(contact.funnel_stage) }}
             </span>
             <span v-if="contact.source" class="source-chip">{{ contact.source }}</span>
           </div>
@@ -787,4 +788,23 @@ const tempLabel = (t) => ({ hot: 'Quente', warm: 'Morno', cold: 'Frio' }[t] || '
 }
 
 .empty-modal { padding: 1.5rem; text-align: center; font-size: 0.83rem; color: var(--text-muted); }
+
+@media (max-width: 768px) {
+  .page-container { padding: 1rem; }
+
+  .page-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.75rem;
+  }
+
+  .header-actions {
+    width: 100%;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+
+    .search-box input { width: 100%; }
+    .search-box { flex: 1; min-width: 0; }
+  }
+}
 </style>

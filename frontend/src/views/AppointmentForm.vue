@@ -338,7 +338,9 @@ const save = async () => {
 
 .icon-sm { width: 16px; height: 16px; }
 @media (max-width: 768px) {
-  .form-layout { flex-direction: column; }
+  .form-layout { flex-direction: column; padding: 1rem; gap: 1rem; }
   .preview-panel { width: 100%; }
+  .form-card { padding: 1rem; }
+  .form-grid { grid-template-columns: 1fr; }
 }
 </style>

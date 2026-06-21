@@ -49,9 +49,10 @@ const updateContact = async () => {
         country: contact.value.country,
         bio: contact.value.bio,
         company_name: contact.value.company_name,
-        temperature: contact.value.temperature,
         source: contact.value.source,
-        intention: contact.value.intention,
+        funnel_stage: contact.value.funnel_stage,
+        health_plan: contact.value.health_plan,
+        health_notes: contact.value.health_notes,
         name: `${contact.value.first_name || ''} ${contact.value.last_name || ''}`.trim() || contact.value.name
       }
     })
@@ -95,7 +96,7 @@ const deleteContact = async () => {
         timer: 1500,
         showConfirmButton: false
       })
-      router.push('/contatos')
+      router.push('/pacientes')
     } catch (error) {
       console.error('Error deleting contact:', error)
       Swal.fire({ icon: 'error', title: 'Erro', text: 'Não foi possível excluir o contato.' })
@@ -218,7 +219,7 @@ const saveNote = async () => {
     <div class="page-container" v-if="contact">
     <div class="page-header">
       <div class="header-left">
-        <router-link to="/contatos" class="breadcrumb-link">Contatos</router-link>
+        <router-link to="/pacientes" class="breadcrumb-link">Pacientes</router-link>
         <span class="breadcrumb-separator">&gt;</span>
         <span class="breadcrumb-current">{{ contact.first_name || contact.name }}</span>
       </div>
@@ -290,26 +291,24 @@ const saveNote = async () => {
             <input type="text" v-model="contact.bio" placeholder="Digite uma biografia" class="form-input" />
             <input type="text" v-model="contact.company_name" placeholder="Digite o nome da empresa" class="form-input" />
             
-            <select v-model="contact.temperature" class="form-input">
-              <option value="" disabled>Selecione a Temperatura</option>
-              <option value="Quente">Quente</option>
-              <option value="Morno">Morno</option>
-              <option value="Frio">Frio</option>
+            <select v-model="contact.funnel_stage" class="form-input">
+              <option value="" disabled>Estágio no Funil</option>
+              <option value="novo_paciente">Novo Paciente</option>
+              <option value="agendado">Agendado</option>
+              <option value="compareceu">Compareceu</option>
+              <option value="retorno">Retorno</option>
             </select>
 
-            <select v-model="contact.intention" class="form-input">
-              <option value="" disabled>Pretensão</option>
-              <option value="Venda">Venda</option>
-              <option value="Locação">Locação</option>
-            </select>
-            
+            <input type="text" v-model="contact.health_plan" placeholder="Plano de saúde" class="form-input" />
+
             <select v-model="contact.source" class="form-input">
-              <option value="" disabled>Mídia de Origem</option>
-              <option value="WhatsApp API">WhatsApp API</option>
+              <option value="" disabled>Origem</option>
+              <option value="WhatsApp">WhatsApp</option>
               <option value="Facebook">Facebook</option>
               <option value="Instagram">Instagram</option>
-              <option value="Portal Imobiliário">Portal Imobiliário</option>
+              <option value="Google">Google</option>
               <option value="Indicação">Indicação</option>
+              <option value="Site">Site</option>
             </select>
           </div>
           
@@ -981,5 +980,17 @@ const saveNote = async () => {
     line-height: 1.6;
     white-space: pre-wrap;
   }
+}
+
+@media (max-width: 768px) {
+  .page-container { padding: 1rem; }
+
+  .content-grid {
+    grid-template-columns: 1fr;
+    overflow: visible;
+    flex: none;
+  }
+
+  .form-grid { grid-template-columns: 1fr; }
 }
 </style>
