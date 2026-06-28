@@ -81,8 +81,7 @@ services:
 
   saude_backend:
     image: ghcr.io/balbiss/inoovasaude-backend:latest
-    command: >
-      bash -c "until bundle exec rails db:prepare; do echo 'Aguardando banco...'; sleep 5; done && bundle exec rails server -b 0.0.0.0 -p 80"
+    command: ["/bin/bash", "-c", "until bundle exec rails db:prepare; do echo 'Aguardando banco...'; sleep 5; done && bundle exec rails server -b 0.0.0.0 -p 3000"]
     environment:
       - RAILS_ENV=production
       - PGHOST=saude_db
@@ -134,7 +133,7 @@ services:
         - traefik.http.routers.saude_backend.entrypoints=websecure
         - traefik.http.routers.saude_backend.tls.certresolver=letsencryptresolver
         - traefik.http.routers.saude_backend.service=saude_backend
-        - traefik.http.services.saude_backend.loadbalancer.server.port=80
+        - traefik.http.services.saude_backend.loadbalancer.server.port=3000
         - traefik.http.services.saude_backend.loadbalancer.passHostHeader=1
         - traefik.http.services.saude_backend.loadbalancer.responseForwarding.flushInterval=100ms
 
