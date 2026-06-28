@@ -81,7 +81,7 @@ services:
 
   saude_backend:
     image: ghcr.io/balbiss/inoovasaude-backend:latest
-    command: ["/bin/bash", "-c", "until bundle exec rails db:migrate; do echo 'Aguardando banco...'; sleep 5; done && bundle exec rails db:migrate:queue; bundle exec rails db:migrate:cable; bundle exec rails server -b 0.0.0.0 -p 3000"]
+    command: ["/bin/bash", "-c", "until bundle exec rails db:migrate; do echo 'Aguardando banco...'; sleep 5; done && bundle exec rails runner \"load 'db/queue_migrate/20240101000001_create_solid_queue_tables.rb'; CreateSolidQueueTables.migrate(:up) rescue nil\" && bundle exec rails runner \"load 'db/cable_migrate/20240101000001_create_solid_cable_messages.rb'; CreateSolidCableMessages.migrate(:up) rescue nil\" && bundle exec rails server -b 0.0.0.0 -p 3000"]
     environment:
       - RAILS_ENV=production
       - PGHOST=saude_db
