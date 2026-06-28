@@ -1,5 +1,6 @@
 class AppointmentConfirmationJob < ApplicationJob
   queue_as :default
+  retry_on StandardError, wait: 30.seconds, attempts: 3
 
   def perform(appointment_id)
     appointment = Appointment.includes(:contact, :professional, :service).find_by(id: appointment_id)
@@ -100,8 +101,5 @@ class AppointmentConfirmationJob < ApplicationJob
     end
     result = svc.send_message(jid, message)
     result.present?
-  rescue => e
-    Rails.logger.error "[AppointmentConfirmationJob] Falha ao enviar WhatsApp: #{e.message}"
-    false
   end
 end
