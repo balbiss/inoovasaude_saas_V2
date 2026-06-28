@@ -8,7 +8,7 @@ services:
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: password
-      POSTGRES_DB: crm_backend_development
+      POSTGRES_DB: inoovasaude_development
     ports:
       - "5432:5432"
 
@@ -16,15 +16,21 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.dev
-    command: bash -c "rm -f tmp/pids/server.pid && bundle install && bundle exec rails db:prepare && bundle exec rails server -b 0.0.0.0"
+    command: bash -c "rm -f tmp/pids/server.pid && bundle install && bundle exec rails db:prepare && bundle exec rails db:migrate && bundle exec rails server -b 0.0.0.0"
     volumes:
       - .:/rails
       - bundle_data:/usr/local/bundle
     ports:
       - "3000:3000"
     environment:
-      - DATABASE_URL=postgres://postgres:password@db:5432/crm_backend_development
+      - DATABASE_URL=postgres://postgres:password@db:5432/inoovasaude_development
       - RAILS_ENV=development
+      - SECRET_KEY_BASE=a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2
+      - BAILEYS_API_URL=http://baileys-api:3025
+      - REDIS_URL=redis://redis:6379
+      - BAILEYS_API_KEY=innovaweb2025
+      - API_HOST=http://web:3000
+      - FRONTEND_URL=http://localhost:5173
     depends_on:
       - db
       - redis
@@ -41,8 +47,12 @@ services:
       - .:/rails
       - bundle_data:/usr/local/bundle
     environment:
-      - DATABASE_URL=postgres://postgres:password@db:5432/crm_backend_development
+      - DATABASE_URL=postgres://postgres:password@db:5432/inoovasaude_development
       - RAILS_ENV=development
+      - SECRET_KEY_BASE=a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2
+      - BAILEYS_API_URL=http://baileys-api:3025
+      - REDIS_URL=redis://redis:6379
+      - BAILEYS_API_KEY=innovaweb2025
     depends_on:
       - db
       - redis
@@ -59,6 +69,7 @@ services:
       - "3025:3025"
     volumes:
       - baileys_storage:/app/storage
+      - ./baileys-patch/connections_index.ts:/usr/src/app/src/controllers/connections/index.ts:ro
     environment:
       - NODE_ENV=production
       - PORT=3025

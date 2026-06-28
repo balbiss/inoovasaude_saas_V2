@@ -22,8 +22,8 @@ class Account < ApplicationRecord
 
   def booking_url
     return nil if booking_slug.blank?
-    public_host = ENV['FRONTEND_URL'].presence || ENV['PUBLIC_URL'].presence || 'http://localhost:5173'
-    "#{public_host}/agendar/#{booking_slug}"
+    frontend_host = ENV['FRONTEND_URL'].presence || 'http://localhost:5173'
+    "#{frontend_host}/agendar/#{booking_slug}"
   end
 
   private
