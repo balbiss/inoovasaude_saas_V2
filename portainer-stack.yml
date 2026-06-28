@@ -1,0 +1,222 @@
+version: "3.7"
+
+services:
+
+  ## --------------------------- BANCO DE DADOS --------------------------- ##
+
+  saude_db:
+    image: postgres:17-alpine
+    environment:
+      - POSTGRES_USER=saude
+      - POSTGRES_PASSWORD=oLghnDhOsJAd69ynibdD2LXAKnSr9PeGo2ytatkNWencYWn
+      - POSTGRES_DB=saude_production
+    volumes:
+      - saude_postgres_data:/var/lib/postgresql/data
+    networks:
+      - inoovawebpro
+    deploy:
+      mode: replicated
+      replicas: 1
+      placement:
+        constraints:
+          - node.role == manager
+      resources:
+        limits:
+          cpus: "1"
+          memory: 512M
+
+  ## --------------------------- REDIS --------------------------- ##
+
+  saude_redis:
+    image: redis:7-alpine
+    command: redis-server --requirepass tvLSfG8S2ulZRiEoBK5U752rDTLbmBMJ77F5TSz6xFrB8 --appendonly yes
+    volumes:
+      - saude_redis_data:/data
+    networks:
+      - inoovawebpro
+    deploy:
+      mode: replicated
+      replicas: 1
+      placement:
+        constraints:
+          - node.role == manager
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 256M
+
+  ## --------------------------- WHATSAPP (BAILEYS) --------------------------- ##
+
+  saude_baileys:
+    image: ghcr.io/fazer-ai/baileys-api:latest
+    command:
+      - sh
+      - "-c"
+      - "bun manage-api-keys create user inoovasaude2025 && bun start"
+    environment:
+      - NODE_ENV=production
+      - PORT=3025
+      - REDIS_URL=redis://:tvLSfG8S2ulZRiEoBK5U752rDTLbmBMJ77F5TSz6xFrB8@saude_redis:6379/1
+      - LOG_LEVEL=warn
+      - BAILEYS_LOG_LEVEL=error
+      - BAILEYS_PROVIDER_DEFAULT_API_KEY=inoovasaude2025
+      - IGNORE_GROUP_MESSAGES=true
+      - IGNORE_STATUS_MESSAGES=true
+    volumes:
+      - saude_baileys_storage:/app/storage
+    networks:
+      - inoovawebpro
+    deploy:
+      mode: replicated
+      replicas: 1
+      placement:
+        constraints:
+          - node.role == manager
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 512M
+
+  ## --------------------------- BACKEND RAILS --------------------------- ##
+
+  saude_backend:
+    image: ghcr.io/balbiss/inoovasaude-backend:latest
+    command: >
+      bash -c "until bundle exec rails db:prepare; do echo 'Aguardando banco...'; sleep 5; done && bundle exec rails db:migrate:cache && bundle exec rails db:migrate:queue && bundle exec rails db:migrate:cable && bundle exec rails server -b 0.0.0.0 -p 80"
+    environment:
+      - RAILS_ENV=production
+      - PGHOST=saude_db
+      - PGPORT=5432
+      - PGDATABASE=saude_production
+      - PGUSER=saude
+      - PGPASSWORD=oLghnDhOsJAd69ynibdD2LXAKnSr9PeGo2ytatkNWencYWn
+      - REDIS_URL=redis://:tvLSfG8S2ulZRiEoBK5U752rDTLbmBMJ77F5TSz6xFrB8@saude_redis:6379/0
+      - RAILS_MASTER_KEY=542d5df3548cfc54effbc0e8dae5b0c7
+      - SECRET_KEY_BASE=a4f19b8ae95451eb192d90edbcbda99425181ce28dfe8a86cdca2a9c0ffa63f9e3ed14f185f41b780199d60c446f80917a785e742ce64843a42d01e34e593eef
+      - API_HOST=https://api-clinica.inoovaweb.com.br
+      - BACKEND_URL=https://api-clinica.inoovaweb.com.br
+      - FRONTEND_URL=https://clinica.inoovaweb.com.br
+      - BAILEYS_API_URL=http://saude_baileys:3025
+      - BAILEYS_API_KEY=inoovasaude2025
+      - APP_NAME=InoovaSaúde
+      - RAILS_LOG_TO_STDOUT=true
+      - RAILS_SERVE_STATIC_FILES=true
+      - TZ=America/Sao_Paulo
+      - OPENAI_API_KEY=SUA_CHAVE_OPENAI_AQUI
+      - SMTP_USER=suporte@inoovaweb.com.br
+      - SMTP_PASSWORD=SUA_SENHA_SMTP_AQUI
+      - SMTP_DOMAIN=inoovaweb.com.br
+      - VAPID_PUBLIC_KEY=BK7wRb9HqPpIJPF3R7roeJd1xUOWwJPBkUW9l3at2xR_YUD7ye5PBNIrBNr6qwinEb940ftwMcVWwJLait11C1M
+      - VAPID_PRIVATE_KEY=hSPQpTeq0I9DcX2taeuC3kXPR5pNrSco_k9y80tHxYs
+    volumes:
+      - saude_rails_storage:/rails/storage
+    networks:
+      - inoovawebpro
+    deploy:
+      mode: replicated
+      replicas: 1
+      placement:
+        constraints:
+          - node.role == manager
+      resources:
+        limits:
+          cpus: "2"
+          memory: 1024M
+      update_config:
+        parallelism: 1
+        delay: 10s
+        order: start-first
+      labels:
+        - traefik.enable=true
+        - traefik.http.routers.saude_backend.rule=Host(`api-clinica.inoovaweb.com.br`)
+        - traefik.http.routers.saude_backend.entrypoints=websecure
+        - traefik.http.routers.saude_backend.tls.certresolver=letsencryptresolver
+        - traefik.http.routers.saude_backend.service=saude_backend
+        - traefik.http.services.saude_backend.loadbalancer.server.port=80
+        - traefik.http.services.saude_backend.loadbalancer.passHostHeader=1
+        - traefik.http.services.saude_backend.loadbalancer.responseForwarding.flushInterval=100ms
+
+  ## --------------------------- WORKER (JOBS) --------------------------- ##
+
+  saude_worker:
+    image: ghcr.io/balbiss/inoovasaude-backend:latest
+    command: bash -c "sleep 40 && bundle exec rails solid_queue:start"
+    environment:
+      - RAILS_ENV=production
+      - PGHOST=saude_db
+      - PGPORT=5432
+      - PGDATABASE=saude_production
+      - PGUSER=saude
+      - PGPASSWORD=oLghnDhOsJAd69ynibdD2LXAKnSr9PeGo2ytatkNWencYWn
+      - REDIS_URL=redis://:tvLSfG8S2ulZRiEoBK5U752rDTLbmBMJ77F5TSz6xFrB8@saude_redis:6379/0
+      - RAILS_MASTER_KEY=542d5df3548cfc54effbc0e8dae5b0c7
+      - SECRET_KEY_BASE=a4f19b8ae95451eb192d90edbcbda99425181ce28dfe8a86cdca2a9c0ffa63f9e3ed14f185f41b780199d60c446f80917a785e742ce64843a42d01e34e593eef
+      - BAILEYS_API_URL=http://saude_baileys:3025
+      - BAILEYS_API_KEY=inoovasaude2025
+      - OPENAI_API_KEY=SUA_CHAVE_OPENAI_AQUI
+      - RAILS_LOG_TO_STDOUT=true
+      - TZ=America/Sao_Paulo
+    volumes:
+      - saude_rails_storage:/rails/storage
+    networks:
+      - inoovawebpro
+    deploy:
+      mode: replicated
+      replicas: 1
+      placement:
+        constraints:
+          - node.role == manager
+      resources:
+        limits:
+          cpus: "1"
+          memory: 512M
+
+  ## --------------------------- FRONTEND VUE --------------------------- ##
+
+  saude_frontend:
+    image: ghcr.io/balbiss/inoovasaude-frontend:latest
+    environment:
+      - API_URL=https://api-clinica.inoovaweb.com.br
+      - APP_NAME=InoovaSaúde
+      - APP_LOGO_URL=
+      - APP_PRIMARY_COLOR=#0d9488
+      - APP_ACCENT_COLOR=#0f766e
+      - APP_SUPPORT_EMAIL=suporte@inoovaweb.com.br
+      - APP_FOOTER_TEXT=© 2025 InoovaSaúde. Todos os direitos reservados.
+    networks:
+      - inoovawebpro
+    deploy:
+      mode: replicated
+      replicas: 1
+      placement:
+        constraints:
+          - node.role == manager
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 256M
+      update_config:
+        parallelism: 1
+        delay: 10s
+        order: start-first
+      labels:
+        - traefik.enable=true
+        - traefik.http.routers.saude_frontend.rule=Host(`clinica.inoovaweb.com.br`)
+        - traefik.http.routers.saude_frontend.entrypoints=websecure
+        - traefik.http.routers.saude_frontend.tls.certresolver=letsencryptresolver
+        - traefik.http.routers.saude_frontend.service=saude_frontend
+        - traefik.http.services.saude_frontend.loadbalancer.server.port=80
+        - traefik.http.services.saude_frontend.loadbalancer.passHostHeader=1
+
+## ================================================================
+
+volumes:
+  saude_postgres_data:
+  saude_redis_data:
+  saude_baileys_storage:
+  saude_rails_storage:
+
+networks:
+  inoovawebpro:
+    external: true
+    name: inoovawebpro
