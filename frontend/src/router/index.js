@@ -251,7 +251,7 @@ router.beforeEach((to, _from, next) => {
 
   // Rota pública: não precisa de autenticação
   const publicRoutes = ['login', 'register', 'forgot-password', 'reset-password']
-  if (publicRoutes.includes(to.name)) {
+  if (to.meta?.public || publicRoutes.includes(to.name)) {
     return next()
   }
 
