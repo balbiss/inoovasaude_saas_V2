@@ -16,6 +16,9 @@ production:
   ai_followup_job:
     class: AiFollowupJob
     schedule: every 10 minutes
+  check_snoozed_conversations:
+    class: CheckSnoozedConversationsJob
+    schedule: every minute
 
 development:
   ai_followup_job:

@@ -16,7 +16,5 @@ class CheckSnoozedConversationsJob < ApplicationJob
         conversation: { id: conv.id, status: 'open', snoozed_until: nil }
       })
     end
-  ensure
-    self.class.set(wait: 60.seconds).perform_later rescue nil
   end
 end
