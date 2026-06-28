@@ -8,9 +8,6 @@ import { Eye, EyeOff, Building2, User, Lock } from 'lucide-vue-next'
 
 const router = useRouter()
 
-const words = brand.name.split(' ')
-const brandMain   = words.slice(0, -1).join(' ')
-const brandAccent = words[words.length - 1]
 
 const form = ref({
   company_name:          '',
@@ -43,7 +40,7 @@ const handleRegister = async () => {
       icon: 'success',
       title: '🎉 Conta criada!',
       html: `Bem-vindo(a) ao ${brand.name}!<br>Verifique seu e-mail e acesse o sistema.`,
-      confirmButtonColor: '#4338ca',
+      confirmButtonColor: '#0d9488',
       confirmButtonText: 'Fazer login'
     })
 
@@ -54,7 +51,7 @@ const handleRegister = async () => {
       icon: 'error',
       title: 'Erro no cadastro',
       text: msg,
-      confirmButtonColor: '#4338ca'
+      confirmButtonColor: '#0d9488'
     })
   } finally {
     isLoading.value = false
@@ -69,12 +66,12 @@ const handleRegister = async () => {
     <div class="login-hero">
       <div class="hero-overlay"></div>
       <div class="hero-content">
-        <h1 class="hero-brand">{{ brandMain }}<span>{{ brandAccent }}</span></h1>
-        <p class="hero-tagline">Cadastre sua imobiliária e comece a atender leads com IA no WhatsApp em minutos.</p>
+        <h1 class="hero-brand"><span class="brand-p1">Inoova</span><span class="brand-p2">Saúde</span></h1>
+        <p class="hero-tagline">Gerencie seus pacientes, agendamentos e equipe em um só lugar — com IA trabalhando 24h para você.</p>
         <div class="hero-badges">
           <span class="hero-badge">IA no WhatsApp</span>
-          <span class="hero-badge">Rodízio automático</span>
-          <span class="hero-badge">Portais integrados</span>
+          <span class="hero-badge">Confirmação automática</span>
+          <span class="hero-badge">Prontuário digital</span>
           <span class="hero-badge">Sem cartão de crédito</span>
         </div>
       </div>
@@ -193,7 +190,7 @@ const handleRegister = async () => {
 .login-hero {
   flex: 1;
   position: relative;
-  background: url('/login-bg.jpg') center center / cover no-repeat;
+  background: url('/login-bg.png') center center / cover no-repeat;
   display: flex;
   align-items: flex-end;
   padding: 3rem;
@@ -219,7 +216,8 @@ const handleRegister = async () => {
   font-weight: 800;
   margin-bottom: 1rem;
   letter-spacing: -0.03em;
-  span { color: #60a5fa; }
+  .brand-p1 { color: #ffffff; }
+  .brand-p2 { color: #0d9488; }
 }
 
 .hero-tagline {
@@ -331,7 +329,7 @@ const handleRegister = async () => {
     box-sizing: border-box;
 
     &:focus {
-      border-color: #4338ca;
+      border-color: #0d9488;
       box-shadow: 0 0 0 3px rgba(67,56,202,0.1);
     }
   }
@@ -353,7 +351,7 @@ const handleRegister = async () => {
     color: var(--text-muted, #6b7280);
     display: flex;
     padding: 0;
-    &:hover { color: #4338ca; }
+    &:hover { color: #0d9488; }
   }
 }
 
@@ -369,7 +367,7 @@ const handleRegister = async () => {
 }
 
 .btn-primary {
-  background: #4338ca;
+  background: #0d9488;
   color: white;
   border: none;
   border-radius: 8px;
@@ -393,7 +391,7 @@ const handleRegister = async () => {
 
   a {
     font-weight: 600;
-    color: #4338ca;
+    color: #0d9488;
     text-decoration: none;
     &:hover { text-decoration: underline; }
   }
