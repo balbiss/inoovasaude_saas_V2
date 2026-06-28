@@ -1,6 +1,7 @@
 import { createRouter, createWebHistory } from 'vue-router'
 
-const OWNER_ROLES = ['empresa', 'admin']
+const OWNER_ROLES = ['secretaria', 'admin']
+const ROLE_MIGRATION = { empresa: 'secretaria', atendente: 'medico' }
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
@@ -8,6 +9,12 @@ const router = createRouter({
     {
       path: '/',
       redirect: '/dashboard'
+    },
+    {
+      path: '/agendar/:slug',
+      name: 'public_booking',
+      component: () => import('../views/PublicBooking.vue'),
+      meta: { public: true }
     },
     {
       path: '/login',
@@ -236,6 +243,10 @@ router.beforeEach((to, _from, next) => {
   let user = null
   try {
     user = JSON.parse(localStorage.getItem('user'))
+    if (user && ROLE_MIGRATION[user.role]) {
+      user.role = ROLE_MIGRATION[user.role]
+      localStorage.setItem('user', JSON.stringify(user))
+    }
   } catch (e) {}
 
   // Rota pública: não precisa de autenticação

@@ -14,6 +14,9 @@ class AccountsController < ApplicationController
       portal_token:          account.portal_token,
       retorno_days:          account.retorno_days || 30,
       block_double_booking:  account.block_double_booking != false,
+      booking_enabled:       account.booking_enabled?,
+      booking_slug:          account.booking_slug,
+      booking_url:           account.booking_url,
       asaas_configured:      account.asaas_api_key.present?,
       asaas_api_key:         mask_key(account.asaas_api_key),
       asaas_sandbox:         account.asaas_sandbox?,
@@ -40,7 +43,11 @@ class AccountsController < ApplicationController
   def update
     account = current_user.account
     if account.update(account_params)
-      render json: { message: 'Configurações atualizadas com sucesso!' }, status: :ok
+      render json: {
+        message: 'Configurações atualizadas com sucesso!',
+        booking_url: account.booking_url,
+        booking_slug: account.booking_slug
+      }, status: :ok
     else
       render json: { error: account.errors.full_messages.to_sentence }, status: :unprocessable_entity
     end
@@ -48,7 +55,6 @@ class AccountsController < ApplicationController
 
   def update_password
     if current_user.update_with_password(password_params)
-      # Ao trocar a senha, o Devise desloga o usuário, então precisamos re-logar:
       bypass_sign_in(current_user)
       render json: { message: 'Senha alterada com sucesso!' }, status: :ok
     else
@@ -59,7 +65,11 @@ class AccountsController < ApplicationController
   private
 
   def account_params
-    params.require(:account).permit(:name, :asaas_api_key, :asaas_sandbox, :retorno_days, :block_double_booking)
+    params.require(:account).permit(
+      :name, :asaas_api_key, :asaas_sandbox,
+      :retorno_days, :block_double_booking,
+      :booking_enabled, :booking_slug
+    )
   end
 
   def mask_key(key)

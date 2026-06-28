@@ -120,7 +120,7 @@ class AiAssistantService
     jid = @conversation.contact.jid.presence || @conversation.contact.phone
     return unless jid
 
-    Rails.cache.write("ai_paused_#{@inbox.id}_#{jid}", Time.current.to_i)
+    Rails.cache.write("ai_paused_#{@inbox.id}_#{jid}", Time.current.to_i, expires_in: 30.minutes)
 
     tag = @conversation.account.tags.find_or_create_by!(name: 'agente_off') { |t| t.color = '#f97316' }
     @conversation.tags << tag unless @conversation.tags.include?(tag)
@@ -158,12 +158,18 @@ class AiAssistantService
 
     extra = @extra_context.present? ? "\n\n[CONTEXTO EXTRA]: #{@extra_context}" : ""
 
+    booking_info = if @inbox.account.booking_enabled? && @inbox.account.booking_url.present?
+      "\n[LINK DE AGENDAMENTO ONLINE]: #{@inbox.account.booking_url} — Se o paciente quiser agendar por conta propria, voce pode enviar este link. Ele abre uma pagina onde o paciente escolhe o profissional, data, horario e preenche os proprios dados."
+    else
+      ""
+    end
+
     <<~PROMPT
       #{base_prompt}
       Seu nome é #{@inbox.ai_name.presence || 'Ana'}. Seja sempre humana, empática e natural — nunca robótica.
 
       [DATA E HORA]: #{date_info}
-      [PACIENTE]: #{patient_info}#{extra}
+      [PACIENTE]: #{patient_info}#{booking_info}#{extra}
 
       REGRA FUNDAMENTAL: faca UMA pergunta por mensagem. Nunca acumule perguntas. Nunca use formatacao markdown como **negrito** — o WhatsApp nao renderiza.
 
@@ -203,7 +209,9 @@ class AiAssistantService
       10. Apos receber o nome, pergunte APENAS o CPF.
           • Se o paciente enviar nome e CPF juntos, aceite os dois e pule para o passo 11.
       11. Apos ter nome e CPF, pergunte APENAS: a consulta sera por convenio ou particular?
-          • Se convenio: qual o plano? (carteirinha e OPCIONAL — nao insista)
+          • EXCECAO IMPORTANTE: se o profissional escolhido aceita APENAS um convenio (e nao aceita particular), nao pergunte qual plano — use esse unico convenio automaticamente e pule para o passo 12.
+          • EXCECAO IMPORTANTE: se o profissional aceita APENAS particular, nao pergunte — use 'particular' automaticamente e pule para o passo 12.
+          • Se aceitar mais de uma opcao: pergunte convenio ou particular. Se convenio: qual o plano? (carteirinha e OPCIONAL — nao insista)
       12. Com nome + CPF + convenio em maos, chame save_contact_data UMA VEZ com tudo junto.
           NAO chame save_contact_data parcialmente (so com nome, por exemplo).
 
@@ -235,6 +243,8 @@ class AiAssistantService
       ✗ NUNCA agende sem confirmacao explicita do paciente.
       ✗ NUNCA pergunte numero de carteirinha de forma obrigatoria.
       ✗ NUNCA peca dados do paciente antes de o paciente escolher profissional, data e horario.
+      ✗ NUNCA transfira para humano por causa de erro de agendamento — informe o paciente sobre o motivo (ex: ja possui consulta agendada) e oferea alternativas (outro dia, cancelar a anterior, etc).
+      ✗ NUNCA pergunte qual o plano de saude quando o profissional aceita apenas uma opcao.
     PROMPT
   end
 
@@ -405,12 +415,17 @@ class AiAssistantService
       }
 
       prof_list = professionals.map do |p|
-        plans = Array(p.accepted_plans || [])
+        plans      = Array(p.accepted_plans || [])
         particular = p.accepts_particular != false
-        plan_str = [
-          particular ? 'Particular' : nil,
-          plans.presence&.join(', ')
-        ].compact.join(', ')
+        options    = [particular ? 'Particular' : nil, plans.presence&.join(', ')].compact
+        plan_str   = options.join(', ')
+
+        # Indica explicitamente quando ha apenas UMA opcao para a IA nao perguntar
+        plan_display = if options.size == 1
+          "#{plan_str} (unica opcao — nao perguntar ao paciente)"
+        else
+          plan_str.presence || 'Consultar clinica'
+        end
 
         schedule = (p.schedule || {}).with_indifferent_access
         schedule_parts = day_order.filter_map do |key|
@@ -424,7 +439,7 @@ class AiAssistantService
         [
           "[ID #{p.id}] #{p.name} — #{p.specialty}",
           "Agenda: #{schedule_str}",
-          "Convenios: #{plan_str.presence || 'Consultar clinica'}"
+          "Convenios: #{plan_display}"
         ].join("\n")
       end
 
@@ -629,7 +644,7 @@ class AiAssistantService
       "Ferramenta não reconhecida: #{name}"
     end
   rescue => e
-    Rails.logger.error("[AiAssistantService#execute_tool] #{name}: #{e.message}")
-    "Erro ao executar ação. Tente novamente."
+    Rails.logger.error("[AiAssistantService#execute_tool] #{name}: #{e.message}\n#{e.backtrace.first(5).join("\n")}")
+    "Erro interno ao executar '#{name}': #{e.message}. Informe o paciente do problema especifico sem transferir para humano."
   end
 end

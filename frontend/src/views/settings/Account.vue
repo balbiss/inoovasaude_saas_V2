@@ -70,6 +70,44 @@
           <button class="btn btn-primary" @click="updateSettings">Salvar regras</button>
         </div>
 
+        <!-- Agendamento Online -->
+        <div class="settings-card">
+          <h2 class="section-title">Agendamento Online</h2>
+          <p class="section-description">Compartilhe um link público para os pacientes agendarem diretamente, sem precisar ligar ou falar com a recepção.</p>
+
+          <div class="form-group toggle-group">
+            <label class="toggle-label">
+              <input type="checkbox" v-model="bookingEnabled" class="toggle-input" />
+              <span class="toggle-track">
+                <span class="toggle-thumb"></span>
+              </span>
+              <span class="toggle-text">
+                <strong>Ativar página de agendamento</strong><br>
+                <small>Quando ativo, pacientes podem agendar pelo link público.</small>
+              </span>
+            </label>
+          </div>
+
+          <div v-if="bookingEnabled" style="margin-top:1.25rem">
+            <label class="form-label">Link do agendamento</label>
+            <div class="booking-url-row">
+              <input type="text" :value="bookingUrl" class="form-control" readonly style="font-size:0.85rem; color: var(--text-muted);" />
+              <button class="btn btn-outline-sm" @click="copyBookingUrl">{{ urlCopied ? '✓ Copiado' : 'Copiar' }}</button>
+            </div>
+            <p class="field-hint" style="margin-top:0.5rem">Envie este link para seus pacientes ou configure a IA para enviá-lo automaticamente.</p>
+
+            <div class="form-group" style="margin-top:1rem">
+              <label>Slug personalizado (identificador único)</label>
+              <div class="booking-url-row">
+                <input type="text" v-model="bookingSlug" class="form-control" placeholder="minha-clinica" style="font-size:0.9rem;" />
+              </div>
+              <p class="field-hint">Apenas letras, números e hífens. Exemplo: <code>clinica-saude</code></p>
+            </div>
+          </div>
+
+          <button class="btn btn-primary" @click="saveBookingSettings">Salvar configurações</button>
+        </div>
+
         <!-- Seção de Segurança -->
         <div class="settings-card">
           <h2 class="section-title">Segurança</h2>
@@ -136,6 +174,10 @@ const userEmail = ref('')
 const siteLanguage = ref('pt-BR')
 const retornoDays = ref(30)
 const blockDoubleBooking = ref(true)
+const bookingEnabled = ref(false)
+const bookingSlug = ref('')
+const bookingUrl = ref('')
+const urlCopied = ref(false)
 
 const subscriptionStatus = ref('pending')
 const planName = ref('Plano Premium')
@@ -163,6 +205,9 @@ const fetchAccountData = async () => {
     planName.value          = response.data.plan_name
     retornoDays.value       = response.data.retorno_days ?? 30
     blockDoubleBooking.value = response.data.block_double_booking !== false
+    bookingEnabled.value     = response.data.booking_enabled === true
+    bookingSlug.value        = response.data.booking_slug || ''
+    bookingUrl.value         = response.data.booking_url  || ''
     
     // Se o trial_ends_at for no futuro e não for active, mostramos como trialing no visual
     if (subscriptionStatus.value !== 'active' && trialEndsAt.value && new Date(trialEndsAt.value) > new Date()) {
@@ -266,6 +311,27 @@ const updateSettings = async () => {
       text: 'Ocorreu um erro ao atualizar as configurações.',
       confirmButtonColor: '#1f73ff'
     })
+  }
+}
+
+const copyBookingUrl = () => {
+  navigator.clipboard.writeText(bookingUrl.value)
+  urlCopied.value = true
+  setTimeout(() => { urlCopied.value = false }, 2000)
+}
+
+const saveBookingSettings = async () => {
+  try {
+    const slugClean = bookingSlug.value.trim().toLowerCase().replace(/[^a-z0-9-]/g, '-')
+    const response = await api.put('/account', { account: {
+      booking_enabled: bookingEnabled.value,
+      booking_slug: slugClean || undefined
+    }})
+    bookingUrl.value = response.data.booking_url || bookingUrl.value
+    if (response.data.booking_slug) bookingSlug.value = response.data.booking_slug
+    Swal.fire({ icon: 'success', title: 'Salvo!', text: 'Configurações de agendamento atualizadas.', timer: 2000, showConfirmButton: false })
+  } catch (e) {
+    Swal.fire({ icon: 'error', title: 'Erro', text: e.response?.data?.error || 'Erro ao salvar.' })
   }
 }
 
@@ -520,4 +586,14 @@ const manageSubscription = async () => {
 .days-number { width: 60px; padding: 6px 8px; border: 1px solid var(--border-color, #e5e7eb); border-radius: 6px; font-size: 0.9rem; text-align: center; background: var(--bg-primary, #fff); color: var(--text-main); }
 .days-unit { font-size: 0.85rem; color: var(--text-muted); }
 .days-hint { font-size: 0.82rem; color: var(--text-muted); margin-top: 8px; }
+.booking-url-row { display: flex; gap: 8px; align-items: center; }
+.booking-url-row .form-control { flex: 1; }
+.form-label { display: block; font-size: 0.85rem; font-weight: 600; margin-bottom: 0.4rem; }
+.btn-outline-sm {
+  padding: 0.5rem 1rem; font-size: 0.85rem; font-weight: 500;
+  border: 1px solid var(--border-color, #e5e7eb); border-radius: 6px;
+  background: var(--bg-primary, #fff); color: var(--text-main); cursor: pointer; white-space: nowrap;
+  &:hover { border-color: #0d9488; color: #0d9488; }
+}
+code { background: var(--bg-hover, #f3f4f6); padding: 2px 6px; border-radius: 4px; font-size: 0.8rem; }
 </style>

@@ -89,6 +89,12 @@ Rails.application.routes.draw do
     post 'stripe',  to: 'stripe#create'
   end
 
+  namespace :public do
+    get  'booking/:slug',              to: 'bookings#show'
+    get  'booking/:slug/slots',        to: 'bookings#slots'
+    post 'booking/:slug/appointments', to: 'bookings#create'
+  end
+
   namespace :admin do
     get 'dashboard', to: 'dashboard#index'
     get 'settings', to: 'settings#index'
