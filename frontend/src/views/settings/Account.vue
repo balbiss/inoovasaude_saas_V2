@@ -75,17 +75,14 @@
           <h2 class="section-title">Agendamento Online</h2>
           <p class="section-description">Compartilhe um link público para os pacientes agendarem diretamente, sem precisar ligar ou falar com a recepção.</p>
 
-          <div class="form-group toggle-group">
-            <label class="toggle-label">
-              <input type="checkbox" v-model="bookingEnabled" class="toggle-input" />
-              <span class="toggle-track">
-                <span class="toggle-thumb"></span>
-              </span>
-              <span class="toggle-text">
-                <strong>Ativar página de agendamento</strong><br>
-                <small>Quando ativo, pacientes podem agendar pelo link público.</small>
-              </span>
-            </label>
+          <div class="form-group booking-toggle-wrap" @click="bookingEnabled = !bookingEnabled" style="cursor:pointer; display:flex; align-items:flex-start; gap:12px;">
+            <span class="booking-track" :style="{ background: bookingEnabled ? '#0d9488' : '#d1d5db' }">
+              <span class="booking-thumb" :style="{ left: bookingEnabled ? '21px' : '3px' }"></span>
+            </span>
+            <span class="toggle-text">
+              <strong>Ativar página de agendamento</strong><br>
+              <small>Quando ativo, pacientes podem agendar pelo link público.</small>
+            </span>
           </div>
 
           <div v-if="bookingEnabled" style="margin-top:1.25rem">
@@ -586,6 +583,14 @@ const manageSubscription = async () => {
 .days-number { width: 60px; padding: 6px 8px; border: 1px solid var(--border-color, #e5e7eb); border-radius: 6px; font-size: 0.9rem; text-align: center; background: var(--bg-primary, #fff); color: var(--text-main); }
 .days-unit { font-size: 0.85rem; color: var(--text-muted); }
 .days-hint { font-size: 0.82rem; color: var(--text-muted); margin-top: 8px; }
+.booking-track {
+  display: inline-block; width: 40px; height: 22px; border-radius: 11px;
+  position: relative; flex-shrink: 0; margin-top: 2px; transition: background 0.2s; cursor: pointer;
+}
+.booking-thumb {
+  position: absolute; top: 3px; width: 16px; height: 16px;
+  background: white; border-radius: 50%; transition: left 0.2s;
+}
 .booking-url-row { display: flex; gap: 8px; align-items: center; }
 .booking-url-row .form-control { flex: 1; }
 .form-label { display: block; font-size: 0.85rem; font-weight: 600; margin-bottom: 0.4rem; }
