@@ -1,13 +1,11 @@
 require_relative '../services/whatsapp_baileys_service'
 
 class InboxesController < ApplicationController
-  before_action :set_inbox, only: %i[ show update destroy qr_code status generate_prompt ]
-  # Corretores podem ler inboxes e ver status (para filtrar conversas por canal).
-  # Apenas o dono gerencia: criar, editar, remover, escanear QR, gerar prompt de IA.
-  before_action :require_owner!, only: %i[ create update destroy qr_code generate_prompt ]
+  before_action :set_inbox, only: %i[ show update destroy qr_code status disconnect reconnect generate_prompt ]
+  before_action :require_owner!, only: %i[ create update destroy qr_code disconnect reconnect generate_prompt ]
 
   def index
-    @inboxes = Inbox.all
+    @inboxes = current_user.account.inboxes
     render json: @inboxes
   end
 
@@ -16,7 +14,7 @@ class InboxesController < ApplicationController
   end
 
   def create
-    @inbox = Inbox.new(inbox_params)
+    @inbox = current_user.account.inboxes.new(inbox_params)
 
     if @inbox.save
       if @inbox.provider == 'baileys'
@@ -67,6 +65,35 @@ class InboxesController < ApplicationController
     baileys = WhatsappBaileysService.new(@inbox)
     connected = baileys.connected?
     render json: { connected: connected }
+  end
+
+  def disconnect
+    baileys = WhatsappBaileysService.new(@inbox)
+    baileys.delete_connection
+    Rails.cache.delete("inbox:#{@inbox.id}:status")
+    Rails.cache.delete("inbox:#{@inbox.id}:qr_code")
+    ActionCable.server.broadcast("conversations_channel", {
+      event: 'inbox_updated',
+      inbox_id: @inbox.id,
+      connection_status: 'close',
+      qr_code: nil
+    })
+    render json: { message: 'Desconectado com sucesso.' }
+  rescue => e
+    render json: { error: e.message }, status: :unprocessable_entity
+  end
+
+  def reconnect
+    baileys = WhatsappBaileysService.new(@inbox)
+    baileys.delete_connection rescue nil
+    Rails.cache.delete("inbox:#{@inbox.id}:status")
+    Rails.cache.delete("inbox:#{@inbox.id}:qr_code")
+    sleep 0.5
+    webhook_url = "#{ENV.fetch('API_HOST', 'http://web:3000')}/webhooks/baileys"
+    baileys.create_connection(webhook_url)
+    render json: { message: 'Reconexão iniciada. Aguarde o QR Code.' }
+  rescue => e
+    render json: { error: e.message }, status: :unprocessable_entity
   end
 
   def destroy
@@ -153,7 +180,7 @@ class InboxesController < ApplicationController
 
   private
     def set_inbox
-      @inbox = Inbox.find(params.expect(:id))
+      @inbox = current_user.account.inboxes.find(params[:id])
     end
 
     def inbox_params

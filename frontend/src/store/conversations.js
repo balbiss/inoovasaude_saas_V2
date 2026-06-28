@@ -127,15 +127,15 @@ export const useConversationsStore = defineStore('conversations', {
       }
     },
 
-    async loadMessages(conversationId) {
+    async loadMessages(conversationId, force = false) {
       const conv = this.conversations.find(c => c.id === conversationId)
       if (!conv) return
-      if (conv.messages && conv.messages.length > 0) return // já carregadas
+      if (!force && conv.messages && conv.messages.length > 0) return
 
       try {
         const res = await api.get(`/conversations/${conversationId}`)
-        conv.messages     = res.data.messages || []
-        conv.contact      = res.data.contact   // full contact with notes
+        conv.messages = res.data.messages || []
+        conv.contact  = res.data.contact
       } catch (e) {
         console.error('loadMessages:', e)
       }
@@ -191,7 +191,7 @@ export const useConversationsStore = defineStore('conversations', {
       const conv = this.conversations.find(c => c.id === id)
       if (conv) {
         conv.unread = 0
-        this.loadMessages(id)
+        this.loadMessages(id, true) // sempre recarrega ao selecionar
       }
     },
 
@@ -417,9 +417,26 @@ export const useConversationsStore = defineStore('conversations', {
             } else {
               this.fetchConversations()
             }
+          } else if (payload.event === 'message_updated') {
+            const { conversation_id, message: updatedMsg } = payload
+            const conv = this.conversations.find(c => Number(c.id) === Number(conversation_id))
+            if (conv?.messages) {
+              const existing = conv.messages.find(m => m.id === updatedMsg.id)
+              if (existing) {
+                Object.assign(existing, updatedMsg)
+                window.dispatchEvent(new CustomEvent('new-message', { detail: { conversationId: conversation_id } }))
+              }
+            }
           } else if (payload.event === 'inbox_updated') {
             window.dispatchEvent(new CustomEvent('inbox-updated', { detail: payload }))
           } else if (payload.event === 'contact_updated') {
+            if (payload.avatar_url) {
+              this.conversations.forEach(conv => {
+                if (conv.contact && Number(conv.contact.id) === Number(payload.contact_id)) {
+                  conv.contact.avatar_url = payload.avatar_url
+                }
+              })
+            }
             window.dispatchEvent(new CustomEvent('contact-updated', { detail: payload }))
           } else if (payload.event === 'conversation_tags_updated') {
             const conv = this.conversations.find(c => c.id === payload.conversation_id)
@@ -441,6 +458,8 @@ export const useConversationsStore = defineStore('conversations', {
             if (Number(payload.assigned_to_user_id) === Number(me?.id)) {
               window.dispatchEvent(new CustomEvent('lead-atribuido', { detail: payload }))
             }
+          } else if (payload.event === 'appointment_updated') {
+            window.dispatchEvent(new CustomEvent('appointment-updated', { detail: payload }))
           }
         } catch (error) {
           console.error('WS message error:', error)
@@ -451,11 +470,59 @@ export const useConversationsStore = defineStore('conversations', {
         this.ws = null
         const delay = Math.min(this._wsReconnectDelay || 3000, 30000)
         this._wsReconnectDelay = delay * 2
-        setTimeout(() => this.fetchConversations(), delay)
+        setTimeout(() => this.fetchConversations(true), delay)
       }
 
       ws.onerror = () => {
         ws.close()
+      }
+    },
+
+    // Polling confiável: atualiza sidebar e mensagens ativas a cada 5s
+    startPolling() {
+      if (this._pollInterval) return
+      this._pollInterval = setInterval(async () => {
+        // 1) Atualiza lista de conversas (sidebar: preview, unread, tags)
+        try {
+          const listRes = await api.get('/conversations')
+          listRes.data.forEach(fresh => {
+            const existing = this.conversations.find(c => Number(c.id) === Number(fresh.id))
+            if (existing) {
+              existing.preview   = fresh.preview
+              existing.timestamp = fresh.timestamp
+              existing.unread    = fresh.unread
+              existing.status    = fresh.status
+              existing.tags      = fresh.tags
+              existing.assignee  = fresh.assignee
+              existing.assignee_id = fresh.assignee_id
+            } else {
+              this.conversations.unshift({ ...fresh, messages: [] })
+            }
+          })
+        } catch {}
+
+        // 2) Atualiza mensagens da conversa ativa
+        if (!this.activeConversationId) return
+        try {
+          const res = await api.get(`/conversations/${this.activeConversationId}`)
+          const conv = this.conversations.find(c => Number(c.id) === Number(this.activeConversationId))
+          if (conv && res.data.messages) {
+            const prevLen = conv.messages?.length || 0
+            conv.messages = res.data.messages
+            if (conv.messages.length > prevLen) {
+              window.dispatchEvent(new CustomEvent('new-message', {
+                detail: { conversationId: this.activeConversationId }
+              }))
+            }
+          }
+        } catch {}
+      }, 5000)
+    },
+
+    stopPolling() {
+      if (this._pollInterval) {
+        clearInterval(this._pollInterval)
+        this._pollInterval = null
       }
     }
   }

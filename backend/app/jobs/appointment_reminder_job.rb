@@ -28,16 +28,20 @@ class AppointmentReminderJob < ApplicationJob
 
   def build_reminder(contact, professional, service, date, time)
     patient_name = contact.first_name.presence || contact.name
+    prof_name    = professional&.name || 'nosso profissional'
+    serv_name    = service&.name || 'consulta'
+
     <<~MSG.strip
       Olá, #{patient_name}! 😊
-      Lembramos que você tem uma consulta amanhã:
 
-      📅 Data: #{date}
-      🕐 Horário: #{time}
-      👨‍⚕️ Profissional: #{professional&.name || 'A definir'}
-      🏥 Serviço: #{service&.name || 'Consulta'}
+      Passando para lembrar que você tem uma *#{serv_name}* hoje com *#{prof_name}* às *#{time}*.
 
-      Até amanhã! Se precisar remarcar, entre em contato.
+      Você vai conseguir comparecer? Por favor, me confirme respondendo:
+
+      👉 *SIM* — para confirmar sua presença ✅
+      👉 *NÃO* — para cancelar ❌
+
+      Qualquer dúvida é só chamar aqui!
     MSG
   end
 

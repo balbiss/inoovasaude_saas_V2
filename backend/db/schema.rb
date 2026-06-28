@@ -10,18 +10,24 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_06_17_000504) do
+ActiveRecord::Schema[8.1].define(version: 2026_06_27_000001) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
   create_table "accounts", force: :cascade do |t|
+    t.string "asaas_api_key"
+    t.boolean "asaas_sandbox", default: false, null: false
+    t.boolean "block_double_booking", default: true
     t.datetime "created_at", null: false
     t.string "name"
+    t.string "portal_token"
+    t.integer "retorno_days", default: 30
     t.string "stripe_customer_id"
     t.string "stripe_subscription_id"
     t.string "subscription_status"
     t.datetime "trial_ends_at"
     t.datetime "updated_at", null: false
+    t.index ["portal_token"], name: "index_accounts_on_portal_token", unique: true
   end
 
   create_table "active_storage_attachments", force: :cascade do |t|
@@ -55,18 +61,25 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_17_000504) do
   create_table "appointments", force: :cascade do |t|
     t.bigint "account_id", null: false
     t.date "appointment_date"
-    t.string "broker_name"
+    t.datetime "confirmation_sent_at"
+    t.string "consultation_type"
     t.bigint "contact_id", null: false
     t.datetime "created_at", null: false
     t.string "end_time"
-    t.bigint "property_id", null: false
+    t.text "notes"
+    t.bigint "professional_id"
+    t.datetime "reminder_sent_at"
+    t.bigint "service_id"
     t.string "start_time"
     t.string "status"
     t.datetime "updated_at", null: false
     t.bigint "user_id"
+    t.index ["account_id", "appointment_date"], name: "idx_appointments_account_date"
+    t.index ["account_id", "status"], name: "idx_appointments_account_status"
     t.index ["account_id"], name: "index_appointments_on_account_id"
     t.index ["contact_id"], name: "index_appointments_on_contact_id"
-    t.index ["property_id"], name: "index_appointments_on_property_id"
+    t.index ["professional_id"], name: "index_appointments_on_professional_id"
+    t.index ["service_id"], name: "index_appointments_on_service_id"
     t.index ["user_id"], name: "index_appointments_on_user_id"
   end
 
@@ -111,6 +124,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_17_000504) do
     t.string "sub_type"
     t.string "tags"
     t.datetime "updated_at", null: false
+    t.index ["account_id", "neighborhood"], name: "idx_condominia_account_neighborhood"
+    t.index ["account_id", "status"], name: "idx_condominia_account_status"
     t.index ["account_id"], name: "index_condominia_on_account_id"
   end
 
@@ -118,9 +133,12 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_17_000504) do
     t.bigint "account_id", null: false
     t.string "address_complement"
     t.string "address_number"
+    t.text "allergies"
+    t.string "asaas_customer_id"
     t.string "avatar_url"
     t.text "bio"
     t.date "birth_date"
+    t.string "blood_type"
     t.string "cep"
     t.string "city"
     t.string "company_name"
@@ -128,15 +146,15 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_17_000504) do
     t.string "cpf"
     t.datetime "created_at", null: false
     t.jsonb "custom_attributes", default: {}
-    t.integer "dependents"
-    t.decimal "down_payment"
     t.string "email"
-    t.decimal "fgts_balance"
     t.string "first_name"
-    t.decimal "gross_income"
-    t.string "intention"
+    t.string "funnel_stage", default: "novo_paciente"
+    t.text "health_notes"
+    t.string "health_plan"
+    t.string "health_plan_number"
     t.string "jid"
     t.string "last_name"
+    t.text "medical_history"
     t.string "name"
     t.string "neighborhood"
     t.string "phone"
@@ -148,9 +166,24 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_17_000504) do
     t.string "temperature"
     t.datetime "updated_at", null: false
     t.bigint "user_id"
+    t.index ["account_id", "created_at"], name: "idx_contacts_account_created_at"
+    t.index ["account_id", "jid"], name: "index_contacts_on_account_id_and_jid"
+    t.index ["account_id", "source"], name: "idx_contacts_account_source"
+    t.index ["account_id", "status"], name: "index_contacts_on_account_id_and_status"
+    t.index ["account_id", "temperature"], name: "idx_contacts_account_temperature"
     t.index ["account_id"], name: "index_contacts_on_account_id"
+    t.index ["asaas_customer_id"], name: "index_contacts_on_asaas_customer_id"
+    t.index ["jid"], name: "index_contacts_on_jid"
     t.index ["phone"], name: "index_contacts_on_phone"
     t.index ["user_id"], name: "index_contacts_on_user_id"
+  end
+
+  create_table "conversation_tags", force: :cascade do |t|
+    t.bigint "conversation_id", null: false
+    t.bigint "tag_id", null: false
+    t.index ["conversation_id", "tag_id"], name: "index_conversation_tags_on_conversation_and_tag", unique: true
+    t.index ["conversation_id"], name: "index_conversation_tags_on_conversation_id"
+    t.index ["tag_id"], name: "index_conversation_tags_on_tag_id"
   end
 
   create_table "conversations", force: :cascade do |t|
@@ -160,14 +193,18 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_17_000504) do
     t.integer "followup_count", default: 0
     t.bigint "inbox_id"
     t.datetime "last_activity_at"
+    t.datetime "snoozed_until"
     t.string "source"
     t.integer "status", default: 0
     t.integer "unread_count", default: 0
     t.datetime "updated_at", null: false
     t.bigint "user_id"
+    t.index ["account_id", "status"], name: "index_conversations_on_account_id_and_status"
     t.index ["account_id"], name: "index_conversations_on_account_id"
     t.index ["contact_id"], name: "index_conversations_on_contact_id"
+    t.index ["inbox_id", "status"], name: "idx_conversations_inbox_status"
     t.index ["inbox_id"], name: "index_conversations_on_inbox_id"
+    t.index ["last_activity_at"], name: "index_conversations_on_last_activity_at"
     t.index ["status"], name: "index_conversations_on_status"
     t.index ["user_id"], name: "index_conversations_on_user_id"
   end
@@ -191,6 +228,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_17_000504) do
   end
 
   create_table "inboxes", force: :cascade do |t|
+    t.bigint "account_id"
     t.boolean "ai_enabled", default: false
     t.string "ai_name"
     t.text "ai_prompt"
@@ -211,7 +249,26 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_17_000504) do
     t.datetime "updated_at", null: false
     t.jsonb "working_hours", default: []
     t.boolean "working_hours_enabled", default: false
+    t.index ["account_id"], name: "index_inboxes_on_account_id"
     t.index ["phone_number"], name: "index_inboxes_on_phone_number"
+  end
+
+  create_table "medical_records", force: :cascade do |t|
+    t.bigint "account_id", null: false
+    t.bigint "appointment_id"
+    t.text "chief_complaint"
+    t.datetime "created_at", null: false
+    t.text "diagnosis"
+    t.text "notes"
+    t.bigint "patient_id", null: false
+    t.text "prescription"
+    t.bigint "professional_id"
+    t.bigint "recorded_by_id"
+    t.datetime "updated_at", null: false
+    t.index ["account_id"], name: "index_medical_records_on_account_id"
+    t.index ["appointment_id"], name: "index_medical_records_on_appointment_id"
+    t.index ["patient_id"], name: "index_medical_records_on_patient_id"
+    t.index ["professional_id"], name: "index_medical_records_on_professional_id"
   end
 
   create_table "messages", force: :cascade do |t|
@@ -226,6 +283,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_17_000504) do
     t.text "text"
     t.datetime "updated_at", null: false
     t.index ["account_id"], name: "index_messages_on_account_id"
+    t.index ["conversation_id", "created_at"], name: "index_messages_on_conversation_id_and_created_at"
     t.index ["conversation_id"], name: "index_messages_on_conversation_id"
     t.index ["sender_type", "sender_id"], name: "index_messages_on_sender_type_and_sender_id"
     t.index ["source_id"], name: "index_messages_on_source_id"
@@ -251,7 +309,28 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_17_000504) do
     t.datetime "read_at"
     t.string "title"
     t.datetime "updated_at", null: false
+    t.index ["account_id", "read_at"], name: "idx_notifications_account_read_at"
     t.index ["account_id"], name: "index_notifications_on_account_id"
+  end
+
+  create_table "professionals", force: :cascade do |t|
+    t.jsonb "accepted_plans", default: []
+    t.boolean "accepts_particular", default: true
+    t.bigint "account_id", null: false
+    t.text "bio"
+    t.jsonb "blocked_dates", default: []
+    t.integer "consultation_duration", default: 30
+    t.string "council_number"
+    t.datetime "created_at", null: false
+    t.string "email"
+    t.jsonb "lunch_break", default: {"end"=>"13:00", "start"=>"12:00", "active"=>true}
+    t.string "name", null: false
+    t.string "phone"
+    t.jsonb "schedule", default: {"sexta"=>{"end"=>"17:00", "start"=>"08:00", "active"=>true}, "terca"=>{"end"=>"18:00", "start"=>"08:00", "active"=>true}, "quarta"=>{"end"=>"18:00", "start"=>"08:00", "active"=>true}, "quinta"=>{"end"=>"18:00", "start"=>"08:00", "active"=>true}, "sabado"=>{"end"=>"12:00", "start"=>"08:00", "active"=>false}, "domingo"=>{"end"=>"12:00", "start"=>"08:00", "active"=>false}, "segunda"=>{"end"=>"18:00", "start"=>"08:00", "active"=>true}}
+    t.string "specialty", null: false
+    t.string "status", default: "active"
+    t.datetime "updated_at", null: false
+    t.index ["account_id"], name: "index_professionals_on_account_id"
   end
 
   create_table "properties", force: :cascade do |t|
@@ -287,6 +366,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_17_000504) do
     t.decimal "price"
     t.string "property_type"
     t.string "reference_point"
+    t.integer "search_count", default: 0, null: false
     t.string "show_address_mode"
     t.string "state"
     t.string "status"
@@ -297,8 +377,24 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_17_000504) do
     t.datetime "updated_at", null: false
     t.string "usage_type"
     t.bigint "user_id"
+    t.index ["account_id", "bedrooms"], name: "idx_properties_account_bedrooms"
+    t.index ["account_id", "listing_type"], name: "idx_properties_account_listing_type"
+    t.index ["account_id", "neighborhood"], name: "idx_properties_account_neighborhood"
+    t.index ["account_id", "price"], name: "idx_properties_account_price"
+    t.index ["account_id", "status"], name: "idx_properties_account_status"
     t.index ["account_id"], name: "index_properties_on_account_id"
     t.index ["user_id"], name: "index_properties_on_user_id"
+  end
+
+  create_table "push_subscriptions", force: :cascade do |t|
+    t.text "auth_key", null: false
+    t.datetime "created_at", null: false
+    t.text "endpoint", null: false
+    t.text "p256dh_key", null: false
+    t.datetime "updated_at", null: false
+    t.bigint "user_id", null: false
+    t.index ["endpoint"], name: "index_push_subscriptions_on_endpoint", unique: true
+    t.index ["user_id"], name: "index_push_subscriptions_on_user_id"
   end
 
   create_table "scheduled_messages", force: :cascade do |t|
@@ -309,6 +405,20 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_17_000504) do
     t.text "text"
     t.datetime "updated_at", null: false
     t.index ["conversation_id"], name: "index_scheduled_messages_on_conversation_id"
+    t.index ["status", "send_at"], name: "idx_scheduled_messages_status_send_at"
+  end
+
+  create_table "services", force: :cascade do |t|
+    t.bigint "account_id", null: false
+    t.string "category"
+    t.datetime "created_at", null: false
+    t.text "description"
+    t.integer "duration_minutes"
+    t.string "name", null: false
+    t.decimal "price", precision: 10, scale: 2
+    t.string "status", default: "active"
+    t.datetime "updated_at", null: false
+    t.index ["account_id"], name: "index_services_on_account_id"
   end
 
   create_table "support_ticket_messages", force: :cascade do |t|
@@ -342,7 +452,9 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_17_000504) do
 
   create_table "users", force: :cascade do |t|
     t.bigint "account_id"
+    t.boolean "available_for_roundrobin", default: false, null: false
     t.datetime "created_at", null: false
+    t.string "department", default: "corretor", null: false
     t.string "email", default: "", null: false
     t.string "encrypted_password", default: "", null: false
     t.string "first_name"
@@ -350,13 +462,16 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_17_000504) do
     t.string "last_name"
     t.jsonb "permissions", default: {}
     t.string "phone"
+    t.integer "queue_position"
     t.datetime "remember_created_at"
     t.datetime "reset_password_sent_at"
     t.string "reset_password_token"
     t.integer "role"
     t.string "status", default: "active"
     t.datetime "updated_at", null: false
+    t.index ["account_id", "available_for_roundrobin", "queue_position"], name: "index_users_on_account_roundrobin_queue"
     t.index ["account_id"], name: "index_users_on_account_id"
+    t.index ["department"], name: "index_users_on_department"
     t.index ["email"], name: "index_users_on_email", unique: true
     t.index ["jti"], name: "index_users_on_jti"
     t.index ["reset_password_token"], name: "index_users_on_reset_password_token", unique: true
@@ -366,26 +481,37 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_17_000504) do
   add_foreign_key "active_storage_variant_records", "active_storage_blobs", column: "blob_id"
   add_foreign_key "appointments", "accounts"
   add_foreign_key "appointments", "contacts"
-  add_foreign_key "appointments", "properties"
+  add_foreign_key "appointments", "professionals"
+  add_foreign_key "appointments", "services"
   add_foreign_key "appointments", "users"
   add_foreign_key "condominia", "accounts"
   add_foreign_key "contacts", "accounts"
   add_foreign_key "contacts", "users"
+  add_foreign_key "conversation_tags", "conversations"
+  add_foreign_key "conversation_tags", "tags"
   add_foreign_key "conversations", "accounts"
   add_foreign_key "conversations", "contacts"
   add_foreign_key "conversations", "inboxes"
   add_foreign_key "conversations", "users"
   add_foreign_key "inbox_members", "inboxes"
   add_foreign_key "inbox_members", "users"
+  add_foreign_key "medical_records", "accounts"
+  add_foreign_key "medical_records", "appointments"
+  add_foreign_key "medical_records", "contacts", column: "patient_id"
+  add_foreign_key "medical_records", "professionals"
+  add_foreign_key "medical_records", "users", column: "recorded_by_id"
   add_foreign_key "messages", "accounts"
   add_foreign_key "messages", "conversations"
   add_foreign_key "notes", "accounts"
   add_foreign_key "notes", "contacts"
   add_foreign_key "notes", "users"
   add_foreign_key "notifications", "accounts"
+  add_foreign_key "professionals", "accounts"
   add_foreign_key "properties", "accounts"
   add_foreign_key "properties", "users"
+  add_foreign_key "push_subscriptions", "users"
   add_foreign_key "scheduled_messages", "conversations"
+  add_foreign_key "services", "accounts"
   add_foreign_key "support_ticket_messages", "support_tickets"
   add_foreign_key "support_ticket_messages", "users"
   add_foreign_key "support_tickets", "accounts"

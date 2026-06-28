@@ -172,23 +172,35 @@ module Webhooks
 
         # Buscar foto de perfil em background (se não tiver foto salva)
         if contact.avatar_url.blank?
-          Thread.new do
-            begin
-              target_jid = nil
-              if remote_jid.include?('@s.whatsapp.net')
-                target_jid = remote_jid
-              elsif remote_jid.include?('@lid') && remote_jid_alt.present? && remote_jid_alt.include?('@s.whatsapp.net')
-                target_jid = remote_jid_alt
-              end
+          _contact_id = contact.id
+          _inbox_id   = inbox.id
+          _target_jid = if remote_jid.include?('@s.whatsapp.net')
+                          remote_jid
+                        elsif remote_jid.include?('@lid') && remote_jid_alt.present? && remote_jid_alt.include?('@s.whatsapp.net')
+                          remote_jid_alt
+                        end
 
-              if target_jid.present?
-                url = WhatsappBaileysService.new(inbox).fetch_profile_picture_url(target_jid)
-                if url.present?
-                  contact.update(avatar_url: url)
+          # Fallback para JIDs @lid sem remoteJidAlt: usa o telefone real do contato
+          if _target_jid.nil? && contact.phone.present?
+            clean_phone_digits = contact.phone.delete('+')
+            _target_jid = "#{clean_phone_digits}@s.whatsapp.net" if clean_phone_digits.match?(/\A\d{10,15}\z/)
+          end
+
+          if _target_jid.present?
+            Thread.new do
+              Rails.application.executor.wrap do
+                begin
+                  fresh_inbox   = Inbox.find(_inbox_id)
+                  fresh_contact = Contact.find(_contact_id)
+                  url = WhatsappBaileysService.new(fresh_inbox).fetch_profile_picture_url(_target_jid)
+                  if url.present?
+                    fresh_contact.update(avatar_url: url)
+                    Rails.logger.info("Profile picture saved for contact #{_contact_id}: #{url[0..60]}")
+                  end
+                rescue => e
+                  Rails.logger.error("Failed to fetch profile picture for #{_target_jid}: #{e.message}")
                 end
               end
-            rescue => e
-              Rails.logger.error("Failed to fetch profile picture for #{target_jid}: #{e.message}")
             end
           end
         end
@@ -209,6 +221,145 @@ module Webhooks
           source_id: source_id,
           status: :delivered
         )
+
+        # Broadcast imediato para o frontend (não depende do after_create_commit)
+        ActionCable.server.broadcast("conversations_channel", {
+          event: 'message_created',
+          conversation_id: conversation.id,
+          message: {
+            id: message_record.id,
+            senderType: 'contact',
+            text: message_record.text,
+            timestamp: message_record.created_at.iso8601,
+            status: message_record.status,
+            agentName: nil,
+            isPrivate: false,
+            attachmentUrl: nil,
+            attachmentType: nil
+          }
+        })
+
+        # Resposta automática ao lembrete de consulta (SIM / NÃO)
+        normalized_reply = text.strip.upcase
+                               .unicode_normalize(:nfd)
+                               .gsub(/[^A-Z]/i, '')
+                               .upcase
+
+        if normalized_reply == 'SIM'
+          upcoming = Appointment
+            .where(account_id: account.id, contact_id: contact.id, status: 'agendado')
+            .where('appointment_date >= ?', Date.current)
+            .order(appointment_date: :asc, start_time: :asc)
+            .first
+
+          if upcoming
+            upcoming.update_columns(status: 'confirmado', updated_at: Time.current)
+            Rails.logger.info("Consulta #{upcoming.id} confirmada via SIM — contato #{contact.id}")
+            ActionCable.server.broadcast('conversations_channel', {
+              event: 'appointment_updated',
+              appointment_id: upcoming.id,
+              status: 'confirmado'
+            })
+
+            _conv_id_sim   = conversation.id
+            _inbox_id_sim  = inbox.id
+            _jid_sim       = remote_jid
+            _patient_sim   = contact.first_name.presence || contact.name
+            _time_sim      = upcoming.start_time
+
+            Thread.new do
+              Rails.application.executor.wrap do
+                msg_ok = "Perfeito, #{_patient_sim}! ✅ Sua presença está confirmada. Te esperamos às *#{_time_sim}*. Até logo!"
+                fresh_inbox = Inbox.find(_inbox_id_sim)
+                baileys_id  = WhatsappBaileysService.new(fresh_inbox).send_message(_jid_sim, msg_ok)
+                conv = Conversation.find(_conv_id_sim)
+                msg_record = Message.create!(
+                  account: conv.account,
+                  conversation: conv,
+                  text: msg_ok,
+                  sender_type: 'User',
+                  sender_id: nil,
+                  source_id: baileys_id.present? ? baileys_id : "sys_#{SecureRandom.hex(8)}",
+                  status: :delivered
+                )
+                ActionCable.server.broadcast('conversations_channel', {
+                  event: 'message_created',
+                  conversation_id: conv.id,
+                  message: {
+                    id: msg_record.id,
+                    senderType: 'agent',
+                    text: msg_record.text,
+                    timestamp: msg_record.created_at.iso8601,
+                    status: msg_record.status,
+                    agentName: 'Sistema',
+                    isPrivate: false,
+                    attachmentUrl: nil,
+                    attachmentType: nil
+                  }
+                })
+              rescue => e
+                Rails.logger.error("Erro ao enviar confirmação: #{e.message}")
+              end
+            end
+          end
+
+        elsif normalized_reply == 'NAO' || normalized_reply == 'NÃO'
+          upcoming = Appointment
+            .where(account_id: account.id, contact_id: contact.id, status: %w[agendado confirmado])
+            .where('appointment_date >= ?', Date.current)
+            .order(appointment_date: :asc, start_time: :asc)
+            .first
+
+          if upcoming
+            upcoming.update_columns(status: 'cancelado', updated_at: Time.current)
+            Rails.logger.info("Consulta #{upcoming.id} cancelada via NÃO — contato #{contact.id}")
+            ActionCable.server.broadcast('conversations_channel', {
+              event: 'appointment_updated',
+              appointment_id: upcoming.id,
+              status: 'cancelado'
+            })
+
+            _conv_id_nao   = conversation.id
+            _inbox_id_nao  = inbox.id
+            _jid_nao       = remote_jid
+            _patient_nao   = contact.first_name.presence || contact.name
+
+            Thread.new do
+              Rails.application.executor.wrap do
+                msg_cancel = "Tudo bem, #{_patient_nao}! ❌ Sua consulta foi cancelada. Quando quiser reagendar é só chamar aqui. 😊"
+                fresh_inbox = Inbox.find(_inbox_id_nao)
+                baileys_id  = WhatsappBaileysService.new(fresh_inbox).send_message(_jid_nao, msg_cancel)
+                conv = Conversation.find(_conv_id_nao)
+                msg_record = Message.create!(
+                  account: conv.account,
+                  conversation: conv,
+                  text: msg_cancel,
+                  sender_type: 'User',
+                  sender_id: nil,
+                  source_id: baileys_id.present? ? baileys_id : "sys_#{SecureRandom.hex(8)}",
+                  status: :delivered
+                )
+                ActionCable.server.broadcast('conversations_channel', {
+                  event: 'message_created',
+                  conversation_id: conv.id,
+                  message: {
+                    id: msg_record.id,
+                    senderType: 'agent',
+                    text: msg_record.text,
+                    timestamp: msg_record.created_at.iso8601,
+                    status: msg_record.status,
+                    agentName: 'Sistema',
+                    isPrivate: false,
+                    attachmentUrl: nil,
+                    attachmentType: nil
+                  }
+                })
+              rescue => e
+                Rails.logger.error("Erro ao enviar cancelamento: #{e.message}")
+              end
+            end
+          end
+        end
 
         # Tratar a mídia
         media_data = nil
@@ -256,7 +407,7 @@ module Webhooks
               filename: filename,
               content_type: mimetype
             )
-            
+
             caption = media_info[:caption] || media_info['caption']
             message_record.update(text: caption) if caption.present? && message_record.text.blank?
 
@@ -269,7 +420,21 @@ module Webhooks
               end
             end
 
-            message_record.update(text: '📎 Anexo recebido') if message_record.text.blank?
+            message_record.update(text: '📎 Anexo') if message_record.text.blank?
+
+            # Broadcast again now that attachment is ready
+            public_host = ENV['PUBLIC_URL'] || 'http://localhost:3000'
+            attachment_url = Rails.application.routes.url_helpers.rails_blob_url(message_record.attachment, host: public_host) rescue nil
+            ActionCable.server.broadcast("conversations_channel", {
+              event: 'message_updated',
+              conversation_id: conversation.id,
+              message: {
+                id: message_record.id,
+                attachmentUrl: attachment_url,
+                attachmentType: mimetype,
+                text: message_record.text
+              }
+            })
           else
             message_record.update(text: '📎 Arquivo não pôde ser baixado') if message_record.text.blank?
           end

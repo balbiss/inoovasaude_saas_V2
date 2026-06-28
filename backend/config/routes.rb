@@ -1,7 +1,7 @@
 Rails.application.routes.draw do
   namespace :reports do
     get :overview
-    get :by_professional
+    get :by_agent
     get :by_tag
     get :export
     get :performance
@@ -78,6 +78,8 @@ Rails.application.routes.draw do
     member do
       get :qr_code
       get :status
+      post :disconnect
+      post :reconnect
       post :generate_prompt
     end
   end

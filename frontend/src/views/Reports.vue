@@ -2,12 +2,12 @@
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { Bar, Doughnut } from 'vue-chartjs'
 import { Chart as ChartJS, Title, Tooltip, Legend, BarElement, ArcElement, CategoryScale, LinearScale } from 'chart.js'
-import { Download, Users, TrendingUp, Tag, CalendarCheck, RefreshCw, FileText, BarChart2, Clock, Home } from 'lucide-vue-next'
+import { Download, Users, TrendingUp, Tag, CalendarCheck, RefreshCw, FileText, BarChart2, Clock } from 'lucide-vue-next'
 import api from '../api'
 import Swal from 'sweetalert2'
 
 const currentUser = JSON.parse(localStorage.getItem('user') || '{}')
-const isOwner     = computed(() => ['empresa', 'admin'].includes(currentUser.role))
+const isOwner     = computed(() => ['secretaria', 'admin'].includes(currentUser.role))
 
 ChartJS.register(Title, Tooltip, Legend, BarElement, ArcElement, CategoryScale, LinearScale)
 
@@ -50,7 +50,7 @@ const fetchAgents = async (silent = false) => {
   try {
     const r = await api.get('/reports/by_agent', { params: periodParams.value })
     agentsData.value = r.data.agents || []
-  } catch { Swal.fire({ toast: true, position: 'top-end', icon: 'error', title: 'Erro ao carregar corretores.', showConfirmButton: false, timer: 3000 }) }
+  } catch { Swal.fire({ toast: true, position: 'top-end', icon: 'error', title: 'Erro ao carregar profissionais.', showConfirmButton: false, timer: 3000 }) }
   finally { isLoading.value = false }
 }
 
@@ -148,8 +148,8 @@ const funnelChart = computed(() => {
   if (!overview.value) return { labels: [], datasets: [] }
   const f = overview.value.funnel
   return {
-    labels: ['Novos Leads', 'Visita Agendada', 'Proposta', 'Fechado'],
-    datasets: [{ label: 'Leads', data: [f.lead, f.visit, f.proposal, f.won],
+    labels: ['Novos Pacientes', 'Agendado', 'Compareceu', 'Retorno'],
+    datasets: [{ label: 'Pacientes', data: [f.novo_paciente, f.agendado, f.compareceu, f.retorno],
       backgroundColor: ['#6366f1','#f59e0b','#3b82f6','#10b981'],
       borderRadius: 6, borderSkipped: false }]
   }
@@ -170,8 +170,8 @@ const sourceChart = computed(() => {
 const agentLeadsChart = computed(() => ({
   labels: agentsData.value.map(a => a.name.split(' ')[0]),
   datasets: [
-    { label: 'Leads', data: agentsData.value.map(a => a.leads_received), backgroundColor: '#6366f1', borderRadius: 4 },
-    { label: 'Fechados', data: agentsData.value.map(a => a.won), backgroundColor: '#10b981', borderRadius: 4 }
+    { label: 'Pacientes', data: agentsData.value.map(a => a.leads_received), backgroundColor: '#6366f1', borderRadius: 4 },
+    { label: 'Compareceu', data: agentsData.value.map(a => a.won), backgroundColor: '#10b981', borderRadius: 4 }
   ]
 }))
 
@@ -204,7 +204,7 @@ const donutOptions = {
     <div class="page-header">
       <div>
         <h1><FileText class="h-icon" /> Relatórios</h1>
-        <p>Análise completa de leads, corretores e campanhas</p>
+        <p>Análise de pacientes, profissionais e agendamentos</p>
       </div>
       <div class="header-actions">
         <select v-model="period" class="period-select">
@@ -234,7 +234,7 @@ const donutOptions = {
         <TrendingUp class="ic" /> Visão Geral
       </button>
       <button v-if="isOwner" :class="['tab', { active: activeTab === 'agents' }]" @click="activeTab = 'agents'">
-        <Users class="ic" /> Por Corretor
+        <Users class="ic" /> Por Profissional
       </button>
       <button v-if="isOwner" :class="['tab', { active: activeTab === 'tags' }]" @click="activeTab = 'tags'">
         <Tag class="ic" /> Por Etiqueta
@@ -254,23 +254,23 @@ const donutOptions = {
       <div :class="['kpi-row', { refreshed: justRefreshed }]">
         <div class="kpi-card">
           <div class="kpi-top">
-            <span class="kpi-label">Total de Leads</span>
+            <span class="kpi-label">Total de Pacientes</span>
             <span class="kpi-badge blue">{{ period === 'month' ? 'Este mês' : '' }}</span>
           </div>
-          <div class="kpi-val">{{ overview.total_leads }}</div>
+          <div class="kpi-val">{{ overview.total_leads || 0 }}</div>
         </div>
         <div class="kpi-card">
-          <div class="kpi-top"><span class="kpi-label">Leads Quentes</span></div>
-          <div class="kpi-val red">{{ overview.by_temperature.quente }}</div>
+          <div class="kpi-top"><span class="kpi-label">Agendados</span></div>
+          <div class="kpi-val" style="color:#f59e0b">{{ overview.funnel?.agendado || 0 }}</div>
         </div>
         <div class="kpi-card">
-          <div class="kpi-top"><span class="kpi-label">Negócios Fechados</span></div>
-          <div class="kpi-val green">{{ overview.funnel.won }}</div>
+          <div class="kpi-top"><span class="kpi-label">Compareceram</span></div>
+          <div class="kpi-val green">{{ overview.funnel?.compareceu || 0 }}</div>
         </div>
         <div class="kpi-card">
-          <div class="kpi-top"><span class="kpi-label">Taxa de Conversão</span></div>
+          <div class="kpi-top"><span class="kpi-label">Taxa de Comparecimento</span></div>
           <div class="kpi-val indigo">
-            {{ overview.total_leads > 0 ? ((overview.funnel.won / overview.total_leads) * 100).toFixed(1) : 0 }}%
+            {{ (overview.total_leads || 0) > 0 ? (((overview.funnel?.compareceu || 0) / overview.total_leads) * 100).toFixed(1) : 0 }}%
           </div>
         </div>
       </div>
@@ -278,50 +278,55 @@ const donutOptions = {
       <div class="chart-row">
         <div class="chart-panel">
           <div class="chart-head">
-            Funil de Vendas
-            <button class="btn-export" @click="exportCSV('leads')"><Download class="ic" /> Exportar Leads CSV</button>
+            Funil Clínico
+            <button class="btn-export" @click="exportCSV('leads')"><Download class="ic" /> Exportar Pacientes CSV</button>
           </div>
           <div class="chart-body">
             <Bar :data="funnelChart" :options="barOptions" />
           </div>
         </div>
         <div class="chart-panel">
-          <div class="chart-head">Origem dos Leads</div>
+          <div class="chart-head">Origem dos Pacientes</div>
           <div class="chart-body">
             <Doughnut :data="sourceChart" :options="donutOptions" />
           </div>
         </div>
       </div>
 
-      <!-- Temperatura breakdown -->
+      <!-- Funil por estágio -->
       <div class="breakdown-panel">
-        <div class="chart-head">Termômetro Detalhado</div>
+        <div class="chart-head">Distribuição por Estágio</div>
         <div class="temp-row">
-          <div class="temp-item hot">
-            <span class="temp-icon">🔥</span>
-            <span class="temp-n">{{ overview.by_temperature.quente }}</span>
-            <span class="temp-lbl">Quentes</span>
+          <div class="temp-item" style="background:#eff6ff">
+            <span class="temp-icon">👤</span>
+            <span class="temp-n" style="color:#4338ca">{{ overview.funnel?.novo_paciente || 0 }}</span>
+            <span class="temp-lbl" style="color:#4338ca">Novos</span>
           </div>
-          <div class="temp-item warm">
-            <span class="temp-icon">🌤</span>
-            <span class="temp-n">{{ overview.by_temperature.morno }}</span>
-            <span class="temp-lbl">Mornos</span>
+          <div class="temp-item" style="background:#fffbeb">
+            <span class="temp-icon">📅</span>
+            <span class="temp-n" style="color:#d97706">{{ overview.funnel?.agendado || 0 }}</span>
+            <span class="temp-lbl" style="color:#d97706">Agendados</span>
           </div>
-          <div class="temp-item cold">
-            <span class="temp-icon">❄️</span>
-            <span class="temp-n">{{ overview.by_temperature.frio }}</span>
-            <span class="temp-lbl">Frios</span>
+          <div class="temp-item" style="background:#f0fdfa">
+            <span class="temp-icon">✅</span>
+            <span class="temp-n" style="color:#0f766e">{{ overview.funnel?.compareceu || 0 }}</span>
+            <span class="temp-lbl" style="color:#0f766e">Compareceram</span>
+          </div>
+          <div class="temp-item" style="background:#f5f3ff">
+            <span class="temp-icon">🔄</span>
+            <span class="temp-n" style="color:#7c3aed">{{ overview.funnel?.retorno || 0 }}</span>
+            <span class="temp-lbl" style="color:#7c3aed">Retorno</span>
           </div>
         </div>
       </div>
     </template>
 
-    <!-- ===== POR CORRETOR ===== -->
+    <!-- ===== POR PROFISSIONAL ===== -->
     <template v-else-if="activeTab === 'agents'">
       <div class="chart-row" v-if="agentsData.length">
         <div class="chart-panel wide">
           <div class="chart-head">
-            Leads por Corretor
+            Pacientes por Profissional
             <button class="btn-export" @click="exportCSV('agents')"><Download class="ic" /> Exportar CSV</button>
           </div>
           <div class="chart-body">
@@ -331,30 +336,30 @@ const donutOptions = {
       </div>
 
       <div class="table-panel">
-        <div class="chart-head">Desempenho Detalhado por Corretor</div>
+        <div class="chart-head">Desempenho Detalhado por Profissional</div>
         <table class="report-table">
           <thead>
             <tr>
-              <th>Corretor</th>
-              <th>Leads Recebidos</th>
-              <th>Quentes</th>
-              <th>Visitas Agendadas</th>
-              <th>Visitas Realizadas</th>
-              <th>Fechados</th>
+              <th>Profissional</th>
+              <th>Pacientes</th>
+              <th>Confirmados</th>
+              <th>Consultas Agendadas</th>
+              <th>Consultas Realizadas</th>
+              <th>Compareceu</th>
               <th>Conversão</th>
               <th>Conv. Abertas</th>
             </tr>
           </thead>
           <tbody>
             <tr v-if="agentsData.length === 0">
-              <td colspan="8" class="no-data-cell">Nenhum corretor encontrado.</td>
+              <td colspan="8" class="no-data-cell">Nenhum profissional encontrado.</td>
             </tr>
             <tr v-for="a in agentsData" :key="a.id">
               <td class="agent-name">{{ a.name }}</td>
               <td class="center"><span class="badge-num blue">{{ a.leads_received }}</span></td>
-              <td class="center"><span class="badge-num red">{{ a.quentes }}</span></td>
-              <td class="center">{{ a.visits_scheduled }}</td>
-              <td class="center">{{ a.visits_done }}</td>
+              <td class="center"><span class="badge-num" style="background:#eff6ff;color:#4338ca">{{ a.confirmados }}</span></td>
+              <td class="center">{{ a.consultas_agendadas }}</td>
+              <td class="center">{{ a.consultas_realizadas }}</td>
               <td class="center"><span class="badge-num green">{{ a.won }}</span></td>
               <td class="center">
                 <span :class="['rate', a.conversion_rate >= 20 ? 'rate-good' : a.conversion_rate >= 5 ? 'rate-mid' : 'rate-low']">
@@ -402,7 +407,7 @@ const donutOptions = {
               <tr>
                 <th>Nome</th>
                 <th>Telefone</th>
-                <th>Temperatura</th>
+                <th>Estágio</th>
                 <th>Origem</th>
               </tr>
             </thead>
@@ -413,9 +418,7 @@ const donutOptions = {
               <tr v-for="c in selectedTag.contacts" :key="c.id">
                 <td class="agent-name">{{ c.name || '—' }}</td>
                 <td>{{ c.phone }}</td>
-                <td>
-                  <span :class="['temp-badge', c.temperature?.toLowerCase()]">{{ c.temperature || '—' }}</span>
-                </td>
+                <td>{{ c.funnel_stage || '—' }}</td>
                 <td>{{ c.source || '—' }}</td>
               </tr>
             </tbody>
@@ -446,13 +449,13 @@ const donutOptions = {
         </div>
       </div>
 
-      <!-- Por corretor (só owner) -->
+      <!-- Por profissional (só owner) -->
       <div class="table-panel" v-if="isOwner && appointmentsReport.by_agent?.length" style="margin-bottom:1rem">
-        <div class="chart-head">Agendamentos por Corretor</div>
+        <div class="chart-head">Agendamentos por Profissional</div>
         <table class="report-table">
           <thead>
             <tr>
-              <th>Corretor</th>
+              <th>Profissional</th>
               <th class="center">Total</th>
               <th class="center">Realizados</th>
               <th class="center">Taxa</th>
@@ -484,9 +487,9 @@ const donutOptions = {
             <tr>
               <th>Data</th>
               <th>Horário</th>
-              <th>Cliente</th>
-              <th>Imóvel</th>
-              <th v-if="isOwner">Corretor</th>
+              <th>Paciente</th>
+              <th>Serviço</th>
+              <th v-if="isOwner">Profissional</th>
               <th>Status</th>
             </tr>
           </thead>
@@ -498,7 +501,7 @@ const donutOptions = {
               <td>{{ a.appointment_date ? new Date(a.appointment_date).toLocaleDateString('pt-BR') : '—' }}</td>
               <td>{{ a.start_time || '—' }} {{ a.end_time ? '– ' + a.end_time : '' }}</td>
               <td class="agent-name">{{ a.contact?.name || a.contact?.phone || '—' }}</td>
-              <td>{{ a.property?.title || '—' }}</td>
+              <td>{{ a.service?.name || '—' }}</td>
               <td v-if="isOwner">{{ a.agent || '—' }}</td>
               <td>
                 <span :class="['status-badge', a.status?.toLowerCase()]">{{ a.status || '—' }}</span>
@@ -537,21 +540,21 @@ const donutOptions = {
         </div>
       </div>
 
-      <!-- Taxa de conversão por corretor -->
+      <!-- Taxa de conversão por profissional -->
       <div class="chart-panel mt-section">
         <div class="panel-head-row">
           <Users class="ic-purple" />
-          <span>Taxa de Conversão por Corretor</span>
+          <span>Taxa de Atendimento por Profissional</span>
           <button class="btn-export-sm" @click="exportCSV('agents')"><Download class="ic" /> CSV</button>
         </div>
         <div class="table-wrap" v-if="agentsData.length">
           <table class="report-table">
             <thead>
               <tr>
-                <th>Corretor</th>
-                <th>Leads</th>
-                <th>Visitas</th>
-                <th>Fechados</th>
+                <th>Profissional</th>
+                <th>Pacientes</th>
+                <th>Consultas</th>
+                <th>Compareceu</th>
                 <th>Conversão</th>
               </tr>
             </thead>
@@ -559,7 +562,7 @@ const donutOptions = {
               <tr v-for="a in agentsData" :key="a.id">
                 <td class="agent-name">{{ a.name }}</td>
                 <td>{{ a.leads_received }}</td>
-                <td>{{ a.visits_scheduled }}</td>
+                <td>{{ a.consultas_agendadas }}</td>
                 <td>{{ a.won }}</td>
                 <td>
                   <span class="conv-badge" :class="a.conversion_rate >= 20 ? 'green' : a.conversion_rate >= 5 ? 'amber' : 'grey'">
@@ -570,26 +573,7 @@ const donutOptions = {
             </tbody>
           </table>
         </div>
-        <div class="no-data-msg" v-else>Nenhum corretor encontrado no período.</div>
-      </div>
-
-      <!-- Top imóveis consultados pela IA -->
-      <div class="chart-panel mt-section">
-        <div class="panel-head-row">
-          <Home class="ic-purple" />
-          <span>Imóveis Mais Consultados pela IA</span>
-        </div>
-        <div v-if="performanceData.top_properties.length">
-          <div class="prop-rank-item" v-for="(p, i) in performanceData.top_properties" :key="p.id">
-            <span class="rank-num">{{ i + 1 }}</span>
-            <div class="prop-rank-info">
-              <span class="prop-rank-title">{{ p.title || 'Sem título' }}</span>
-              <span class="prop-rank-sub">{{ p.neighborhood }} · R$ {{ Number(p.price).toLocaleString('pt-BR') }}</span>
-            </div>
-            <span class="prop-rank-count">{{ p.search_count }}x</span>
-          </div>
-        </div>
-        <div class="no-data-msg" v-else>Nenhum imóvel consultado ainda. A contagem começa quando a IA busca imóveis para leads.</div>
+        <div class="no-data-msg" v-else>Nenhum profissional encontrado no período.</div>
       </div>
 
     </template>

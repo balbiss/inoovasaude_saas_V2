@@ -22,8 +22,17 @@ class AppointmentConfirmationJob < ApplicationJob
     send_whatsapp(inbox, contact.phone, message)
     appointment.update_columns(confirmation_sent_at: Time.current)
 
-    AppointmentReminderJob.set(wait_until: appointment.appointment_date.to_datetime - 1.day)
-                          .perform_later(appointment_id)
+    # Lembrete 1: dia anterior às 9h (pedindo confirmação)
+    day_before_9am = appointment.appointment_date.to_datetime - 1.day + 9.hours
+    # Lembrete único: 3 horas antes da consulta
+    if appointment.start_time.present?
+      appt_datetime = DateTime.parse("#{appointment.appointment_date} #{appointment.start_time}")
+      three_hours_before = appt_datetime - 3.hours
+      if three_hours_before > Time.current
+        AppointmentReminderJob.set(wait_until: three_hours_before)
+                              .perform_later(appointment_id)
+      end
+    end
   end
 
   private

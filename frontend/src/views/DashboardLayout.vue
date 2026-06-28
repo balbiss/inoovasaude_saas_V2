@@ -9,6 +9,7 @@ import { useProfessionalsStore } from '../store/professionals'
 import { useClinicServicesStore } from '../store/clinic_services'
 import { useAppointmentsStore } from '../store/appointments'
 import { useAgentsStore } from '../store/agents'
+import { useConversationsStore } from '../store/conversations'
 import {
   Search,
   Inbox,
@@ -124,6 +125,7 @@ const professionalsStore = useProfessionalsStore()
 const clinicServicesStore = useClinicServicesStore()
 const appointmentsStore = useAppointmentsStore()
 const agentsStore = useAgentsStore()
+const conversationsStore = useConversationsStore()
 
 // Dados reais do usuário logado
 const currentUser = ref({ first_name: '', last_name: '', email: '', account_name: '' })
@@ -293,6 +295,7 @@ onMounted(() => {
   if (!clinicServicesStore.isLoadedOnce) clinicServicesStore.fetchServices()
   if (!appointmentsStore.isLoadedOnce) appointmentsStore.fetchAppointments()
   if (!agentsStore.isLoadedOnce) agentsStore.fetchAgents()
+  conversationsStore.setupWebSocket()
 
   window.addEventListener('keydown', handlePaletteKeydown)
   const savedTheme = localStorage.getItem('theme') || 'system'

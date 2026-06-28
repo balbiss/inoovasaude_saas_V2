@@ -1,8 +1,7 @@
 <script setup>
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted, onUnmounted, computed } from 'vue'
 import { useRouter } from 'vue-router'
-import { Filter, Search, Plus, Eye, CalendarDays, X } from '@lucide/vue'
-import api from '../api'
+import { Plus, Eye, CalendarDays } from '@lucide/vue'
 import { useAppointmentsStore } from '../store/appointments'
 import { storeToRefs } from 'pinia'
 
@@ -17,13 +16,39 @@ const filterDate = ref('')
 const filterProfessional = ref('')
 const filterContact = ref('')
 
+const filteredAppointments = computed(() => {
+  let list = appointments.value
+  if (filterStatus.value)
+    list = list.filter(a => (a.status || '').toLowerCase() === filterStatus.value)
+  if (filterService.value)
+    list = list.filter(a => String(a.service?.id) === String(filterService.value))
+  if (filterDate.value)
+    list = list.filter(a => a.appointment_date === filterDate.value)
+  if (filterProfessional.value)
+    list = list.filter(a => String(a.professional?.id) === String(filterProfessional.value))
+  if (filterContact.value)
+    list = list.filter(a => String(a.contact?.id) === String(filterContact.value))
+  return list
+})
+
 const fetchAppointments = () => {
-  appointmentsStore.fetchAppointments()
+  appointmentsStore.fetchAppointments(true)
+}
+
+const onAppointmentUpdated = (e) => {
+  const { appointment_id, status } = e.detail
+  const appt = appointments.value.find(a => Number(a.id) === Number(appointment_id))
+  if (appt) appt.status = status
 }
 
 onMounted(() => {
   appointmentsStore.fetchMetaData()
-  fetchAppointments()
+  appointmentsStore.fetchAppointments()
+  window.addEventListener('appointment-updated', onAppointmentUpdated)
+})
+
+onUnmounted(() => {
+  window.removeEventListener('appointment-updated', onAppointmentUpdated)
 })
 
 const clearFilters = () => {
@@ -66,8 +91,12 @@ const formatTime = (datetime) => {
           <label class="floating-label">Status</label>
           <select v-model="filterStatus">
             <option value="">Selecione</option>
-            <option value="Pendente">Pendente</option>
-            <option value="Confirmado">Confirmado</option>
+            <option value="agendado">Agendado</option>
+            <option value="confirmado">Confirmado</option>
+            <option value="compareceu">Compareceu</option>
+            <option value="nao_compareceu">Não compareceu</option>
+            <option value="cancelado">Cancelado</option>
+            <option value="retorno">Retorno</option>
           </select>
         </div>
 
@@ -137,13 +166,13 @@ const formatTime = (datetime) => {
               <td><div class="skeleton-action"></div></td>
             </tr>
           </template>
-          <tr v-else-if="appointments.length === 0">
+          <tr v-else-if="filteredAppointments.length === 0">
             <td colspan="8" class="text-center py-4 text-muted">Nenhum agendamento encontrado.</td>
           </tr>
-          <tr v-for="app in appointments" :key="app.id" @dblclick="router.push(`/agendamentos/${app.id}/editar`)">
+          <tr v-for="app in filteredAppointments" :key="app.id" @dblclick="router.push(`/agendamentos/${app.id}/editar`)">
             <td>
-              <span :class="['badge', (app.status === 'Confirmado' || app.status === 'Agendado' || app.status === 'scheduled') ? 'badge-success' : 'badge-default']">
-                {{ app.status === 'scheduled' ? 'Agendado' : (app.status || 'Pendente') }}
+              <span :class="['badge', ['confirmado','compareceu'].includes(app.status) ? 'badge-success' : app.status === 'agendado' ? 'badge-info' : app.status === 'cancelado' ? 'badge-danger' : 'badge-default']">
+                {{ app.status || 'agendado' }}
               </span>
             </td>
             <td>{{ formatDate(app.appointment_date) }}</td>
@@ -316,10 +345,17 @@ const formatTime = (datetime) => {
   font-weight: 500;
 
   &.badge-success {
-    background: rgba(16, 185, 129, 0.2);
+    background: rgba(16, 185, 129, 0.15);
     color: #065f46;
   }
-  
+  &.badge-info {
+    background: rgba(59, 130, 246, 0.15);
+    color: #1e40af;
+  }
+  &.badge-danger {
+    background: rgba(239, 68, 68, 0.15);
+    color: #991b1b;
+  }
   &.badge-default {
     background: rgba(156, 163, 175, 0.2);
     color: #374151;

@@ -32,7 +32,7 @@ class ContactsController < ApplicationController
 
   # POST /contacts
   def create
-    @contact = Contact.new(contact_params)
+    @contact = current_user.account.contacts.new(contact_params)
     @contact.user_id ||= current_user.id
 
     if @contact.save
@@ -53,13 +53,24 @@ class ContactsController < ApplicationController
 
   # DELETE /contacts/1
   def destroy
-    @contact.destroy!
+    # Bulk delete to avoid N+1 cascade (conversations → messages → scheduled_messages → conversation_tags)
+    conversation_ids = @contact.conversations.pluck(:id)
+    unless conversation_ids.empty?
+      Message.where(conversation_id: conversation_ids).delete_all
+      ScheduledMessage.where(conversation_id: conversation_ids).delete_all
+      ConversationTag.where(conversation_id: conversation_ids).delete_all
+      Conversation.where(id: conversation_ids).delete_all
+    end
+    @contact.notes.delete_all
+    @contact.appointments.delete_all
+    MedicalRecord.where(patient_id: @contact.id).delete_all
+    @contact.delete
     head :no_content
   end
 
   # POST /contacts/1/merge
   def merge
-    target_contact = Contact.find_by(id: params[:target_contact_id])
+    target_contact = current_user.account.contacts.find_by(id: params[:target_contact_id])
     if target_contact.nil? || target_contact.id == @contact.id
       return render json: { error: 'Invalid target contact' }, status: :unprocessable_entity
     end
@@ -110,7 +121,7 @@ class ContactsController < ApplicationController
 
     def contact_params
       params.require(:contact).permit(
-        :name, :email, :phone, :jid, :avatar_url, :status, :account_id,
+        :name, :email, :phone, :jid, :avatar_url, :status,
         :first_name, :last_name, :city, :country, :bio, :company_name,
         :temperature, :source, :funnel_stage,
         :cpf, :birth_date, :profession,
