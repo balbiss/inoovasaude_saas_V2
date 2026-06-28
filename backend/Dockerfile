@@ -65,6 +65,9 @@ USER 1000:1000
 COPY --chown=rails:rails --from=build "${BUNDLE_PATH}" "${BUNDLE_PATH}"
 COPY --chown=rails:rails --from=build /rails /rails
 
+# Garantir permissão de execução nos binários
+RUN chmod +x /rails/bin/docker-entrypoint /rails/bin/rails /rails/bin/rake /rails/bin/thrust
+
 # Entrypoint prepares the database.
 ENTRYPOINT ["/rails/bin/docker-entrypoint"]
 
