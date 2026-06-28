@@ -326,6 +326,7 @@ onMounted(() => {
   document.addEventListener('click', closeEmojiPicker)
   document.addEventListener('click', closeFilterPopover)
   store.setupWebSocket()
+  store.startPolling()
   scrollToBottom()
 })
 
@@ -333,6 +334,7 @@ onUnmounted(() => {
   window.removeEventListener('new-message', handleNewMessage)
   document.removeEventListener('click', closeEmojiPicker)
   document.removeEventListener('click', closeFilterPopover)
+  store.stopPolling()
   clearInterval(aiStatusInterval.value)
 })
 
@@ -430,7 +432,7 @@ watch(() => store.activeConversationId, (newId) => {
   aiPauseStatus.value = { paused: false, remaining_seconds: 0 }
   if (newId) {
     fetchAiStatus()
-    aiStatusInterval.value = setInterval(fetchAiStatus, 15000)
+    aiStatusInterval.value = setInterval(fetchAiStatus, 30000)
   }
 }, { immediate: true })
 

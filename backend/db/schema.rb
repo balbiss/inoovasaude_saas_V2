@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_06_27_000001) do
+ActiveRecord::Schema[8.1].define(version: 2026_06_27_000002) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -18,6 +18,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_27_000001) do
     t.string "asaas_api_key"
     t.boolean "asaas_sandbox", default: false, null: false
     t.boolean "block_double_booking", default: true
+    t.boolean "booking_enabled", default: false, null: false
+    t.string "booking_slug"
     t.datetime "created_at", null: false
     t.string "name"
     t.string "portal_token"
@@ -27,6 +29,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_27_000001) do
     t.string "subscription_status"
     t.datetime "trial_ends_at"
     t.datetime "updated_at", null: false
+    t.index ["booking_slug"], name: "index_accounts_on_booking_slug", unique: true
     t.index ["portal_token"], name: "index_accounts_on_portal_token", unique: true
   end
 

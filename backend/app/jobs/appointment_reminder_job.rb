@@ -4,7 +4,6 @@ class AppointmentReminderJob < ApplicationJob
   def perform(appointment_id)
     appointment = Appointment.includes(:contact, :professional, :service).find_by(id: appointment_id)
     return unless appointment
-    return if appointment.contact&.phone.blank?
     return if appointment.status.in?(%w[cancelado cancelled])
     return if appointment.reminder_sent_at.present?
 
@@ -12,6 +11,9 @@ class AppointmentReminderJob < ApplicationJob
     return unless inbox
 
     contact = appointment.contact
+    phone = normalize_phone(contact&.phone)
+    return if phone.blank?
+
     professional = appointment.professional
     service = appointment.service
 
@@ -20,8 +22,8 @@ class AppointmentReminderJob < ApplicationJob
 
     message = build_reminder(contact, professional, service, date_str, time_str)
 
-    send_whatsapp(inbox, contact.phone, message)
-    appointment.update_columns(reminder_sent_at: Time.current)
+    sent = send_whatsapp(inbox, phone, message)
+    appointment.update_columns(reminder_sent_at: Time.current) if sent
   end
 
   private
@@ -45,9 +47,47 @@ class AppointmentReminderJob < ApplicationJob
     MSG
   end
 
+  def normalize_phone(phone)
+    return nil if phone.blank?
+    digits = phone.gsub(/\D/, '')
+    digits = "55#{digits}" if digits.length <= 11 && !digits.start_with?('55')
+    digits
+  end
+
+  def resolve_jid(svc, digits)
+    jid = svc.resolve_jid(digits)
+    return jid if jid.present?
+
+    if digits.start_with?('55') && digits.length == 13
+      ddd = digits[2..3]; number = digits[4..]
+      if number.start_with?('9') && number.length == 9
+        jid = svc.resolve_jid("55#{ddd}#{number[1..]}")
+        return jid if jid.present?
+      end
+    end
+
+    if digits.start_with?('55') && digits.length == 12
+      ddd = digits[2..3]; number = digits[4..]
+      if number.length == 8
+        jid = svc.resolve_jid("55#{ddd}9#{number}")
+        return jid if jid.present?
+      end
+    end
+
+    nil
+  end
+
   def send_whatsapp(inbox, phone, message)
-    WhatsappBaileysService.new(inbox).send_message(phone, message)
+    svc = WhatsappBaileysService.new(inbox)
+    jid = resolve_jid(svc, phone)
+    unless jid.present?
+      Rails.logger.warn "[AppointmentReminderJob] Número #{phone} não encontrado no WhatsApp"
+      return false
+    end
+    result = svc.send_message(jid, message)
+    result.present?
   rescue => e
     Rails.logger.error "[AppointmentReminderJob] Falha ao enviar WhatsApp: #{e.message}"
+    false
   end
 end

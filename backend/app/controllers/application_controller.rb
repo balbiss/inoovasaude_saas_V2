@@ -12,15 +12,13 @@ class ApplicationController < ActionController::API
     end
   end
 
-  # Garante que apenas donos (empresa/admin) acessem o endpoint.
-  # Chame via before_action :require_owner! nos controllers filhos.
   def require_owner!
     unless owner?
-      render json: { error: 'forbidden', message: 'Acesso restrito ao administrador da imobiliária.' }, status: :forbidden
+      render json: { error: 'forbidden', message: 'Acesso restrito ao administrador da clínica.' }, status: :forbidden
     end
   end
 
   def owner?
-    current_user&.empresa? || current_user&.admin?
+    current_user&.secretaria? || current_user&.admin?
   end
 end

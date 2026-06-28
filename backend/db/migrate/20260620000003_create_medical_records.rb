@@ -14,7 +14,5 @@ class CreateMedicalRecords < ActiveRecord::Migration[8.1]
     end
 
     add_foreign_key :medical_records, :users, column: :recorded_by_id
-    add_index :medical_records, :account_id
-    add_index :medical_records, :patient_id
   end
 end

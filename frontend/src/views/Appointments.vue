@@ -1,9 +1,11 @@
 <script setup>
 import { ref, onMounted, onUnmounted, computed } from 'vue'
 import { useRouter } from 'vue-router'
-import { Plus, Eye, CalendarDays } from '@lucide/vue'
+import { Plus, Eye, CalendarDays, Trash2 } from '@lucide/vue'
 import { useAppointmentsStore } from '../store/appointments'
 import { storeToRefs } from 'pinia'
+import Swal from 'sweetalert2'
+import api from '../api'
 
 const router = useRouter()
 const appointmentsStore = useAppointmentsStore()
@@ -50,6 +52,30 @@ onMounted(() => {
 onUnmounted(() => {
   window.removeEventListener('appointment-updated', onAppointmentUpdated)
 })
+
+const deleteAppointment = async (app) => {
+  const contact = app.contact?.name || 'este paciente'
+  const date = formatDate(app.appointment_date)
+  const result = await Swal.fire({
+    title: 'Excluir consulta?',
+    html: `<span style="color:#64748b;font-size:0.95rem">${contact} — ${date} às ${formatTime(app.start_time)}</span>`,
+    icon: 'warning',
+    showCancelButton: true,
+    confirmButtonColor: '#dc2626',
+    cancelButtonColor: '#e2e8f0',
+    confirmButtonText: 'Excluir',
+    cancelButtonText: 'Cancelar',
+    reverseButtons: true
+  })
+  if (!result.isConfirmed) return
+  try {
+    await api.delete(`/appointments/${app.id}`)
+    appointmentsStore.appointments = appointmentsStore.appointments.filter(a => a.id !== app.id)
+    Swal.fire({ toast: true, position: 'top-end', icon: 'success', title: 'Consulta excluída!', showConfirmButton: false, timer: 2500 })
+  } catch {
+    Swal.fire({ toast: true, position: 'top-end', icon: 'error', title: 'Erro ao excluir consulta.', showConfirmButton: false, timer: 3000 })
+  }
+}
 
 const clearFilters = () => {
   filterStatus.value = ''
@@ -150,7 +176,7 @@ const formatTime = (datetime) => {
             <th>Cliente</th>
             <th>Profissional</th>
             <th>Serviço</th>
-            <th width="50"></th>
+            <th width="90"></th>
           </tr>
         </thead>
         <tbody>
@@ -189,6 +215,9 @@ const formatTime = (datetime) => {
             <td class="actions-cell">
               <button class="btn-icon" @click="router.push(`/agendamentos/${app.id}/editar`)" title="Visualizar">
                 <Eye class="icon-sm" />
+              </button>
+              <button class="btn-icon btn-icon--danger" @click.stop="deleteAppointment(app)" title="Excluir">
+                <Trash2 class="icon-sm" />
               </button>
             </td>
           </tr>
@@ -377,14 +406,25 @@ const formatTime = (datetime) => {
   cursor: pointer;
   padding: 0.5rem;
   border-radius: 4px;
-  display: flex;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
-  
+
   &:hover {
     background: rgba(0,0,0,0.05);
     color: var(--text-main);
   }
+
+  &--danger:hover {
+    background: rgba(220, 38, 38, 0.08);
+    color: #dc2626;
+  }
+}
+
+.actions-cell {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
 }
 
 .btn-primary {

@@ -1,6 +1,6 @@
-#!/usr/bin/env ruby
-require_relative "../config/boot"
-require "bundler/audit/cli"
+#!/us/bin/env uby
+equie_relative "../config/boot"
+equie "bundler/audit/cli"
 
-ARGV.concat %w[ --config config/bundler-audit.yml ] if ARGV.empty? || ARGV.include?("check")
-Bundler::Audit::CLI.start
+ARGV.concat %w[ --config config/bundle-audit.yml ] if ARGV.empty? || ARGV.include?("check")
+Bundle::Audit::CLI.stat

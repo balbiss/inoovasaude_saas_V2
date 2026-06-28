@@ -63,70 +63,39 @@
           </div>
 
           <div class="form-section">
-            <h3>Qualificação Imobiliária</h3>
-            
-            <div class="form-group">
-              <label>Renda Bruta (R$)</label>
-              <input type="number" step="0.01" v-model="formData.gross_income" placeholder="0.00" autocomplete="off" />
+            <h3>Informações de Saúde</h3>
+
+            <div class="form-row">
+              <div class="form-group half">
+                <label>Plano de Saúde</label>
+                <input type="text" v-model="formData.health_plan" placeholder="Ex: Unimed, Hapvida" autocomplete="off" />
+              </div>
+              <div class="form-group half">
+                <label>Número do Plano</label>
+                <input type="text" v-model="formData.health_plan_number" placeholder="Nº da carteirinha" autocomplete="off" />
+              </div>
             </div>
 
-            <!-- Checkboxes and conditional inputs -->
-            <div class="qualification-checklists">
-              
-              <!-- Entrada -->
-              <div class="checklist-item">
-                <div class="checklist-header">
-                  <span class="question-text">Possui Valor de Entrada?</span>
-                  <div class="yes-no-group">
-                    <label class="yes-no-btn" :class="{ active: formData.has_down_payment === true }">
-                      <input type="radio" :value="true" v-model="formData.has_down_payment" /> Sim
-                    </label>
-                    <label class="yes-no-btn" :class="{ active: formData.has_down_payment === false }">
-                      <input type="radio" :value="false" v-model="formData.has_down_payment" /> Não
-                    </label>
-                  </div>
-                </div>
-                <div class="conditional-input" v-if="formData.has_down_payment">
-                  <input type="number" step="0.01" v-model="formData.down_payment" placeholder="Qual o valor? (R$)" autocomplete="off" />
-                </div>
+            <div class="form-row">
+              <div class="form-group half">
+                <label>Tipo Sanguíneo</label>
+                <select v-model="formData.blood_type">
+                  <option value="">Não informado</option>
+                  <option>A+</option><option>A-</option>
+                  <option>B+</option><option>B-</option>
+                  <option>AB+</option><option>AB-</option>
+                  <option>O+</option><option>O-</option>
+                </select>
               </div>
-
-              <!-- FGTS -->
-              <div class="checklist-item">
-                <div class="checklist-header">
-                  <span class="question-text">Possui Saldo FGTS?</span>
-                  <div class="yes-no-group">
-                    <label class="yes-no-btn" :class="{ active: formData.has_fgts === true }">
-                      <input type="radio" :value="true" v-model="formData.has_fgts" /> Sim
-                    </label>
-                    <label class="yes-no-btn" :class="{ active: formData.has_fgts === false }">
-                      <input type="radio" :value="false" v-model="formData.has_fgts" /> Não
-                    </label>
-                  </div>
-                </div>
-                <div class="conditional-input" v-if="formData.has_fgts">
-                  <input type="number" step="0.01" v-model="formData.fgts_balance" placeholder="Qual o saldo? (R$)" autocomplete="off" />
-                </div>
+              <div class="form-group half">
+                <label>Alergias</label>
+                <input type="text" v-model="formData.allergies" placeholder="Ex: Dipirona, Penicilina" autocomplete="off" />
               </div>
+            </div>
 
-              <!-- Dependentes -->
-              <div class="checklist-item">
-                <div class="checklist-header">
-                  <span class="question-text">Possui Dependentes?</span>
-                  <div class="yes-no-group">
-                    <label class="yes-no-btn" :class="{ active: formData.has_dependents === true }">
-                      <input type="radio" :value="true" v-model="formData.has_dependents" /> Sim
-                    </label>
-                    <label class="yes-no-btn" :class="{ active: formData.has_dependents === false }">
-                      <input type="radio" :value="false" v-model="formData.has_dependents" /> Não
-                    </label>
-                  </div>
-                </div>
-                <div class="conditional-input" v-if="formData.has_dependents">
-                  <input type="number" v-model="formData.dependents" placeholder="Quantidade de dependentes" autocomplete="off" />
-                </div>
-              </div>
-
+            <div class="form-group">
+              <label>Observações de Saúde</label>
+              <textarea v-model="formData.health_notes" placeholder="Histórico médico relevante, condições crônicas, etc." rows="3"></textarea>
             </div>
           </div>
 
@@ -254,13 +223,11 @@ const formData = ref({
   cpf: '',
   birth_date: '',
   profession: '',
-  gross_income: '',
-  down_payment: '',
-  fgts_balance: '',
-  dependents: '',
-  has_down_payment: false,
-  has_fgts: false,
-  has_dependents: false,
+  health_plan: '',
+  health_plan_number: '',
+  blood_type: '',
+  allergies: '',
+  health_notes: '',
   cep: '',
   street: '',
   neighborhood: '',
@@ -317,13 +284,11 @@ watch(() => props.contact, (newContact) => {
       cpf: newContact.cpf || '',
       birth_date: newContact.birth_date || '',
       profession: newContact.profession || '',
-      gross_income: newContact.gross_income || '',
-      down_payment: newContact.down_payment || '',
-      fgts_balance: newContact.fgts_balance || '',
-      dependents: newContact.dependents || '',
-      has_down_payment: !!newContact.down_payment && parseFloat(newContact.down_payment) > 0,
-      has_fgts: !!newContact.fgts_balance && parseFloat(newContact.fgts_balance) > 0,
-      has_dependents: !!newContact.dependents && parseInt(newContact.dependents) > 0,
+      health_plan: newContact.health_plan || '',
+      health_plan_number: newContact.health_plan_number || '',
+      blood_type: newContact.blood_type || '',
+      allergies: newContact.allergies || '',
+      health_notes: newContact.health_notes || '',
       cep: newContact.cep || '',
       street: newContact.street || '',
       neighborhood: newContact.neighborhood || '',
@@ -343,24 +308,14 @@ const save = async () => {
   if (!props.contact) return
   loading.value = true
   
-  // Clean up data before sending
-  const dataToSave = { ...formData.value }
-  if (!dataToSave.has_down_payment) dataToSave.down_payment = null
-  if (!dataToSave.has_fgts) dataToSave.fgts_balance = null
-  if (!dataToSave.has_dependents) dataToSave.dependents = null
-  
-  delete dataToSave.has_down_payment
-  delete dataToSave.has_fgts
-  delete dataToSave.has_dependents
-
+  const { customAttributesArray, ...rest } = formData.value
   const custom_attributes = {}
-  dataToSave.customAttributesArray.forEach(attr => {
+  customAttributesArray.forEach(attr => {
     if (attr.key && attr.key.trim()) {
       custom_attributes[attr.key.trim()] = attr.value
     }
   })
-  dataToSave.custom_attributes = custom_attributes
-  delete dataToSave.customAttributesArray
+  const dataToSave = { ...rest, custom_attributes }
 
   try {
     await store.updateContact(props.contact.id, dataToSave)
@@ -484,7 +439,7 @@ const save = async () => {
   font-weight: 500;
 }
 
-.form-group input, .form-group textarea {
+.form-group input, .form-group textarea, .form-group select {
   width: 100%;
   padding: 10px 12px;
   border: 1px solid #e5e7eb;
@@ -502,94 +457,6 @@ const save = async () => {
   box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
 }
 
-.qualification-checklists {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  margin-top: 16px;
-  background: #f9fafb;
-  padding: 16px;
-  border-radius: 8px;
-  border: 1px solid #f3f4f6;
-}
-
-.checklist-item {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  padding-bottom: 12px;
-  border-bottom: 1px dashed #e5e7eb;
-}
-
-.checklist-item:last-child {
-  border-bottom: none;
-  padding-bottom: 0;
-}
-
-.checklist-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-
-.question-text {
-  font-size: 0.9rem;
-  color: #374151;
-  font-weight: 500;
-}
-
-.yes-no-group {
-  display: flex;
-  background: #e5e7eb;
-  border-radius: 6px;
-  padding: 2px;
-}
-
-.yes-no-btn {
-  padding: 4px 12px;
-  font-size: 0.85rem;
-  color: #6b7280;
-  cursor: pointer;
-  border-radius: 4px;
-  transition: all 0.2s;
-  user-select: none;
-}
-
-.yes-no-btn input {
-  display: none;
-}
-
-.yes-no-btn.active {
-  background: white;
-  color: #1f2937;
-  font-weight: 600;
-  box-shadow: 0 1px 2px rgba(0,0,0,0.05);
-}
-
-.conditional-input {
-  animation: slideDown 0.2s ease-out;
-}
-
-@keyframes slideDown {
-  from { opacity: 0; transform: translateY(-5px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-
-.conditional-input input {
-  width: 100%;
-  padding: 8px 12px;
-  border: 1px solid #e5e7eb;
-  border-radius: 6px;
-  font-size: 0.95rem;
-  background: white;
-  transition: all 0.2s;
-}
-
-.conditional-input input:focus {
-  outline: none;
-  border-color: #3b82f6;
-  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
-}
 
 .phone-input-wrapper {
   display: flex;

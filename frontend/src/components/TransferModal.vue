@@ -14,7 +14,7 @@ const note = ref('')
 const isLoading = ref(false)
 
 const agentsByDept = computed(() => {
-  const LABELS = { corretor: 'Corretores', suporte: 'Suporte', financeiro: 'Financeiro', manutencao: 'Manutenção' }
+  const LABELS = { medico: 'Médicos', secretaria: 'Secretárias', suporte: 'Suporte', financeiro: 'Financeiro' }
   const groups = {}
   for (const a of props.agents) {
     const d = a.department || 'outros'

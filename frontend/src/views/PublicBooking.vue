@@ -26,26 +26,42 @@ const loadingSlots    = ref(false)
 const slots           = ref([])
 const slotDuration    = ref(30)
 
-const form = ref({ name: '', cpf: '', phone: '', health_plan: '', consultation_type: '' })
-
-const specialtyIcon = (s = '') => {
-  const map = {
-    'médico': '🩺', 'medico': '🩺',
-    'dentista': '🦷',
-    'psicólogo': '🧠', 'psicologo': '🧠',
-    'fisioterapeuta': '💪',
-    'nutricionista': '🥗',
-    'esteticista': '✨',
-    'enfermeiro': '💉',
-    'fonoaudiólogo': '🗣️', 'fonoaudiologo': '🗣️',
-    'terapeuta': '🌿',
-  }
-  return map[s.toLowerCase()] || '👨‍⚕️'
-}
+const form = ref({ name: '', cpf: '', phone: '', health_plan: '' })
+const planOpen = ref(false)
+const selectPlan = (p) => { form.value.health_plan = p; planOpen.value = false }
+const planOptions = computed(() => {
+  const opts = [...(selectedProf.value?.accepted_plans || [])]
+  if (selectedProf.value?.accepts_particular) opts.push('Particular')
+  return opts
+})
 
 const dayLabels = { segunda: 'Seg', terca: 'Ter', quarta: 'Qua', quinta: 'Qui', sexta: 'Sex', sabado: 'Sáb', domingo: 'Dom' }
 
-const profSchedule = (prof) => {
+const TITLES = new Set(['dr.', 'dra.', 'dr', 'dra', 'prof.', 'profa.', 'prof', 'profa'])
+const profInitials = (name = '') =>
+  name.split(' ')
+    .filter(w => !TITLES.has(w.toLowerCase()))
+    .slice(0, 2)
+    .map(w => w[0])
+    .join('')
+    .toUpperCase()
+
+const avatarColor = (specialty = '') => {
+  const colors = {
+    'médico': '#0d9488', 'medico': '#0d9488',
+    'dentista': '#0891b2',
+    'psicólogo': '#7c3aed', 'psicologo': '#7c3aed',
+    'fisioterapeuta': '#059669',
+    'nutricionista': '#d97706',
+    'esteticista': '#db2777',
+    'enfermeiro': '#2563eb',
+    'fonoaudiólogo': '#0f766e',
+    'terapeuta': '#065f46',
+  }
+  return colors[specialty.toLowerCase()] || '#0d9488'
+}
+
+const profScheduleSummary = (prof) => {
   if (!prof?.schedule) return ''
   return Object.entries(prof.schedule)
     .filter(([, v]) => v.active)
@@ -55,15 +71,17 @@ const profSchedule = (prof) => {
 
 const morningSlots   = computed(() => slots.value.filter(s => parseInt(s) < 12))
 const afternoonSlots = computed(() => slots.value.filter(s => parseInt(s) >= 12))
+
 const minDate = computed(() => {
   const d = new Date(); d.setDate(d.getDate() + 1)
   return d.toISOString().split('T')[0]
 })
+
 const formattedDate = computed(() => {
   if (!selectedDate.value) return ''
   const [, m, d] = selectedDate.value.split('-')
-  const names = ['','Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro']
-  return `${d} de ${names[+m]}`
+  const months = ['','Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez']
+  return `${d} de ${months[+m]}`
 })
 
 onMounted(async () => {
@@ -84,9 +102,11 @@ const selectProf = (prof) => {
   slots.value           = []
 }
 
+const goStep = (n) => { errorMsg.value = ''; step.value = n }
+
 const goToStep2 = () => {
-  if (!selectedProf.value) { errorMsg.value = 'Selecione um profissional.'; return }
-  errorMsg.value = ''; step.value = 2
+  if (!selectedProf.value) { errorMsg.value = 'Selecione um profissional para continuar.'; return }
+  goStep(2)
 }
 
 const onDateChange = async () => {
@@ -97,16 +117,15 @@ const onDateChange = async () => {
     const res = await axios.get(`${API}/public/booking/${slug}/slots`, {
       params: { professional_id: selectedProf.value.id, date: selectedDate.value }
     })
-    slots.value      = res.data.slots || []
-    slotDuration.value = res.data.duration || 30
+    slots.value = res.data.slots || []; slotDuration.value = res.data.duration || 30
   } catch { slots.value = [] }
-  finally   { loadingSlots.value = false }
+  finally { loadingSlots.value = false }
 }
 
 const goToStep3 = () => {
   if (!selectedDate.value) { errorMsg.value = 'Selecione uma data.'; return }
   if (!selectedSlot.value) { errorMsg.value = 'Selecione um horário.'; return }
-  errorMsg.value = ''; step.value = 3
+  goStep(3)
 }
 
 const onCpfInput = (e) => {
@@ -126,8 +145,8 @@ const onPhoneInput = (e) => {
 
 const goToReview = () => {
   if (!form.value.name.trim()) { errorMsg.value = 'Informe seu nome completo.'; return }
-  if (form.value.cpf.replace(/\D/g,'').length !== 11) { errorMsg.value = 'CPF inválido.'; return }
-  errorMsg.value = ''; step.value = 4
+  if (form.value.cpf.replace(/\D/g,'').length !== 11) { errorMsg.value = 'Informe um CPF válido (11 dígitos).'; return }
+  goStep(4)
 }
 
 const submit = async () => {
@@ -142,7 +161,7 @@ const submit = async () => {
       cpf:               form.value.cpf.replace(/\D/g,''),
       phone:             form.value.phone.replace(/\D/g,''),
       health_plan:       form.value.health_plan,
-      consultation_type: form.value.consultation_type || selectedService.value?.name || 'Consulta'
+      consultation_type: selectedService.value?.name || 'Consulta'
     })
     successData.value = res.data.appointment; success.value = true
   } catch (err) {
@@ -154,634 +173,756 @@ const submit = async () => {
 const restart = () => {
   step.value = 1; selectedProf.value = null; selectedService.value = null
   selectedDate.value = ''; selectedSlot.value = ''; slots.value = []
-  form.value = { name: '', cpf: '', phone: '', health_plan: '', consultation_type: '' }
+  form.value = { name: '', cpf: '', phone: '', health_plan: '' }
   success.value = false; successData.value = null; errorMsg.value = ''
 }
 
-const stepLabels = ['Profissional', 'Data & Horário', 'Seus dados', 'Confirmar']
+const stepLabels = ['Profissional', 'Data e Hora', 'Seus Dados', 'Confirmar']
 </script>
 
 <template>
-  <div class="bp">
+  <div class="pb-root">
 
-    <!-- Loading -->
-    <div v-if="loading" class="bp-center">
-      <div class="bp-spinner"></div>
-      <p>Carregando...</p>
+    <!-- ── Loading ── -->
+    <div v-if="loading" class="pb-fullscreen">
+      <div class="pb-spinner"></div>
+      <p class="pb-muted">Carregando...</p>
     </div>
 
-    <!-- Not found -->
-    <div v-else-if="notFound" class="bp-center">
-      <span class="bp-big-icon">🏥</span>
+    <!-- ── Not found ── -->
+    <div v-else-if="notFound" class="pb-fullscreen">
+      <svg class="pb-icon-xl" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 9v4m0 4h.01M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/></svg>
       <h2>Página não encontrada</h2>
-      <p>Este link de agendamento não existe ou está desativado.</p>
+      <p class="pb-muted">Este link de agendamento não existe ou foi desativado.</p>
     </div>
 
-    <!-- Success -->
-    <div v-else-if="success" class="bp-center">
-      <span class="bp-big-icon">✅</span>
-      <h2 class="bp-success-title">Agendamento confirmado!</h2>
-      <div v-if="successData" class="bp-confirm-card">
-        <div class="bp-confirm-row">
-          <span>👨‍⚕️ Profissional</span>
-          <strong>{{ successData.professional }}</strong>
+    <!-- ── Success ── -->
+    <div v-else-if="success" class="pb-fullscreen">
+      <div class="pb-success-check">
+        <svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg>
+      </div>
+      <h2 class="pb-success-title">Agendamento confirmado!</h2>
+      <p class="pb-muted" style="margin-bottom:1.5rem">Em breve você receberá a confirmação no WhatsApp.</p>
+
+      <div v-if="successData" class="pb-confirm-card">
+        <div class="pb-confirm-header">
+          <div class="pb-confirm-avatar" :style="{ background: avatarColor(selectedProf?.specialty || '') }">
+            {{ profInitials(successData.professional) }}
+          </div>
+          <div>
+            <p class="pb-confirm-name">{{ successData.professional }}</p>
+            <p class="pb-confirm-spec" v-if="successData.service">{{ successData.service }}</p>
+          </div>
         </div>
-        <div class="bp-confirm-row" v-if="successData.service">
-          <span>🩺 Consulta</span>
-          <strong>{{ successData.service }}</strong>
-        </div>
-        <div class="bp-confirm-row">
-          <span>📅 Data</span>
-          <strong>{{ successData.date }}</strong>
-        </div>
-        <div class="bp-confirm-row">
-          <span>🕐 Horário</span>
-          <strong>{{ successData.time }}</strong>
+        <div class="pb-confirm-rows">
+          <div class="pb-confirm-row">
+            <span class="pb-confirm-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+            </span>
+            <div><p class="pb-confirm-label">Data</p><p class="pb-confirm-value">{{ successData.date }}</p></div>
+          </div>
+          <div class="pb-confirm-row">
+            <span class="pb-confirm-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+            </span>
+            <div><p class="pb-confirm-label">Horário</p><p class="pb-confirm-value">{{ successData.time }}</p></div>
+          </div>
         </div>
       </div>
-      <p class="bp-note">📲 Em breve você receberá a confirmação no WhatsApp.</p>
-      <button class="bp-btn-primary" @click="restart">Fazer outro agendamento</button>
+
+      <button class="pb-btn-primary" @click="restart">Fazer novo agendamento</button>
     </div>
 
-    <!-- Main flow -->
+    <!-- ── Main flow ── -->
     <template v-else>
 
       <!-- Header -->
-      <div class="bp-header">
-        <div class="bp-header-icon">🏥</div>
-        <h1 class="bp-clinic-name">{{ clinic?.clinic_name }}</h1>
-        <p class="bp-clinic-sub">Agendamento online · rápido e fácil</p>
-      </div>
+      <header class="pb-header">
+        <div class="pb-header-logo">
+          <svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M22 12h-4l-3 9L9 3l-3 9H2"/>
+          </svg>
+        </div>
+        <h1 class="pb-header-name">{{ clinic?.clinic_name }}</h1>
+        <p class="pb-header-sub">Agendamento online</p>
+      </header>
 
-      <!-- Steps -->
-      <div class="bp-steps">
-        <div v-for="(label, i) in stepLabels" :key="i" class="bp-step-item">
-          <div :class="['bp-step-num', i + 1 === step ? 'active' : i + 1 < step ? 'done' : '']">
-            <span v-if="i + 1 < step">✓</span>
+      <!-- Progress bar -->
+      <nav class="pb-nav">
+        <div v-for="(label, i) in stepLabels" :key="i" class="pb-nav-item">
+          <div :class="['pb-nav-dot', i + 1 === step ? 'active' : i + 1 < step ? 'done' : '']">
+            <svg v-if="i + 1 < step" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg>
             <span v-else>{{ i + 1 }}</span>
           </div>
-          <span :class="['bp-step-text', i + 1 === step ? 'active' : '']">{{ label }}</span>
+          <span :class="['pb-nav-label', i + 1 === step ? 'active' : '']">{{ label }}</span>
         </div>
-      </div>
+        <!-- connector lines -->
+        <div class="pb-nav-lines">
+          <div v-for="i in 3" :key="i" :class="['pb-nav-line', i < step ? 'done' : '']"></div>
+        </div>
+      </nav>
 
-      <div class="bp-body">
+      <!-- Content -->
+      <main class="pb-main">
 
-        <!-- ── STEP 1: Profissional ── -->
-        <div v-if="step === 1">
-          <h2 class="bp-section-title">👨‍⚕️ Escolha o profissional</h2>
+        <!-- ── Step 1: Profissional ── -->
+        <section v-if="step === 1">
+          <h2 class="pb-title">Escolha o profissional</h2>
 
-          <div class="bp-prof-list">
-            <div
+          <div class="pb-prof-list">
+            <button
               v-for="prof in professionals" :key="prof.id"
-              :class="['bp-prof-card', selectedProf?.id === prof.id ? 'selected' : '']"
+              :class="['pb-prof-card', selectedProf?.id === prof.id ? 'is-selected' : '']"
               @click="selectProf(prof)">
-              <div class="bp-prof-avatar">{{ specialtyIcon(prof.specialty) }}</div>
-              <div class="bp-prof-details">
-                <p class="bp-prof-name">{{ prof.name }}</p>
-                <p class="bp-prof-spec">{{ prof.specialty }}</p>
-                <p class="bp-prof-sched">🕐 {{ profSchedule(prof) }}</p>
-                <div v-if="prof.accepted_plans?.length || prof.accepts_particular" class="bp-plans">
-                  <span v-for="p in prof.accepted_plans" :key="p" class="bp-plan-badge">{{ p }}</span>
-                  <span v-if="prof.accepts_particular" class="bp-plan-badge particular">💳 Particular</span>
+              <div class="pb-prof-avatar" :style="{ background: avatarColor(prof.specialty) }">
+                {{ profInitials(prof.name) }}
+              </div>
+              <div class="pb-prof-body">
+                <p class="pb-prof-name">{{ prof.name }}</p>
+                <p class="pb-prof-spec">{{ prof.specialty }}</p>
+                <p class="pb-prof-hours">{{ profScheduleSummary(prof) }}</p>
+                <div v-if="prof.accepted_plans?.length || prof.accepts_particular" class="pb-tags">
+                  <span v-for="p in prof.accepted_plans" :key="p" class="pb-tag">{{ p }}</span>
+                  <span v-if="prof.accepts_particular" class="pb-tag pb-tag--green">Particular</span>
                 </div>
               </div>
-              <div v-if="selectedProf?.id === prof.id" class="bp-check">✓</div>
-            </div>
-          </div>
-
-          <div v-if="selectedProf && services.length" class="bp-services">
-            <h3 class="bp-sub-title">🩺 Tipo de consulta <span class="bp-optional">(opcional)</span></h3>
-            <div class="bp-service-grid">
-              <div
-                v-for="svc in services" :key="svc.id"
-                :class="['bp-svc-card', selectedService?.id === svc.id ? 'selected' : '']"
-                @click="selectedService = selectedService?.id === svc.id ? null : svc">
-                <span class="bp-svc-name">{{ svc.name }}</span>
-                <span v-if="svc.price" class="bp-svc-price">R$ {{ Number(svc.price).toFixed(2) }}</span>
+              <div :class="['pb-prof-radio', selectedProf?.id === prof.id ? 'checked' : '']">
+                <svg v-if="selectedProf?.id === prof.id" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg>
               </div>
+            </button>
+          </div>
+
+          <!-- Services -->
+          <div v-if="selectedProf && services.length" class="pb-services">
+            <p class="pb-subtitle">Tipo de consulta <span class="pb-opt">— opcional</span></p>
+            <div class="pb-svc-grid">
+              <button
+                v-for="svc in services" :key="svc.id"
+                :class="['pb-svc', selectedService?.id === svc.id ? 'is-selected' : '']"
+                @click="selectedService = selectedService?.id === svc.id ? null : svc">
+                <span class="pb-svc-name">{{ svc.name }}</span>
+                <span v-if="svc.price" class="pb-svc-price">R$ {{ Number(svc.price).toFixed(2) }}</span>
+              </button>
             </div>
           </div>
 
-          <div v-if="errorMsg" class="bp-error">⚠️ {{ errorMsg }}</div>
-          <button class="bp-btn-primary full" @click="goToStep2" :disabled="!selectedProf">
-            Continuar →
+          <p v-if="errorMsg" class="pb-error">{{ errorMsg }}</p>
+          <button class="pb-btn-primary pb-btn-full" @click="goToStep2" :disabled="!selectedProf">
+            Continuar
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
           </button>
-        </div>
+        </section>
 
-        <!-- ── STEP 2: Data + Horário ── -->
-        <div v-if="step === 2">
-          <div class="bp-banner">
-            <span class="bp-banner-icon">{{ specialtyIcon(selectedProf?.specialty) }}</span>
-            <div>
-              <p class="bp-banner-name">{{ selectedProf?.name }}</p>
-              <p class="bp-banner-sub" v-if="selectedService">{{ selectedService.name }}</p>
+        <!-- ── Step 2: Data + Horário ── -->
+        <section v-if="step === 2">
+          <!-- Selected prof banner -->
+          <div class="pb-banner">
+            <div class="pb-banner-avatar" :style="{ background: avatarColor(selectedProf?.specialty || '') }">
+              {{ profInitials(selectedProf?.name || '') }}
             </div>
+            <div class="pb-banner-info">
+              <p class="pb-banner-name">{{ selectedProf?.name }}</p>
+              <p class="pb-banner-spec">{{ selectedProf?.specialty }}<span v-if="selectedService"> · {{ selectedService.name }}</span></p>
+            </div>
+            <button class="pb-banner-change" @click="goStep(1)">Alterar</button>
           </div>
 
-          <h2 class="bp-section-title">📅 Escolha a data</h2>
-          <input type="date" v-model="selectedDate" :min="minDate" @change="onDateChange" class="bp-date-input" />
+          <h2 class="pb-title">Selecione a data</h2>
+          <input type="date" v-model="selectedDate" :min="minDate" @change="onDateChange" class="pb-date" />
 
-          <div v-if="selectedDate" class="bp-slots-wrap">
-            <div v-if="loadingSlots" class="bp-loading-slots">
-              <div class="bp-spinner small"></div> Buscando horários...
+          <template v-if="selectedDate">
+            <div v-if="loadingSlots" class="pb-loading">
+              <div class="pb-spinner pb-spinner--sm"></div>
+              <span>Verificando disponibilidade...</span>
             </div>
-            <div v-else-if="slots.length === 0" class="bp-no-slots">
-              😕 Nenhum horário disponível nesta data.<br>Tente outra data.
+            <div v-else-if="slots.length === 0" class="pb-empty-slots">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+              <p>Nenhum horário disponível nesta data.</p>
+              <span>Selecione outra data para continuar.</span>
             </div>
             <template v-else>
-              <h3 class="bp-section-title" style="margin-top:1.5rem">🕐 Escolha o horário</h3>
-              <div v-if="morningSlots.length">
-                <p class="bp-period">🌅 Manhã</p>
-                <div class="bp-slot-grid">
-                  <button
-                    v-for="s in morningSlots" :key="s"
-                    :class="['bp-slot', selectedSlot === s ? 'selected' : '']"
+              <h2 class="pb-title" style="margin-top:1.75rem">Selecione o horário</h2>
+              <div v-if="morningSlots.length" class="pb-slots-group">
+                <p class="pb-slots-label">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                  Manhã
+                </p>
+                <div class="pb-slots">
+                  <button v-for="s in morningSlots" :key="s"
+                    :class="['pb-slot', selectedSlot === s ? 'is-selected' : '']"
                     @click="selectedSlot = s">{{ s }}</button>
                 </div>
               </div>
-              <div v-if="afternoonSlots.length" style="margin-top:1.25rem">
-                <p class="bp-period">🌇 Tarde</p>
-                <div class="bp-slot-grid">
-                  <button
-                    v-for="s in afternoonSlots" :key="s"
-                    :class="['bp-slot', selectedSlot === s ? 'selected' : '']"
+              <div v-if="afternoonSlots.length" class="pb-slots-group">
+                <p class="pb-slots-label">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                  Tarde
+                </p>
+                <div class="pb-slots">
+                  <button v-for="s in afternoonSlots" :key="s"
+                    :class="['pb-slot', selectedSlot === s ? 'is-selected' : '']"
                     @click="selectedSlot = s">{{ s }}</button>
                 </div>
               </div>
             </template>
-          </div>
+          </template>
 
-          <div v-if="errorMsg" class="bp-error">⚠️ {{ errorMsg }}</div>
-          <div class="bp-btn-row">
-            <button class="bp-btn-ghost" @click="step = 1">← Voltar</button>
-            <button class="bp-btn-primary" @click="goToStep3" :disabled="!selectedSlot">Continuar →</button>
-          </div>
-        </div>
-
-        <!-- ── STEP 3: Dados ── -->
-        <div v-if="step === 3">
-          <div class="bp-banner">
-            <span class="bp-banner-icon">{{ specialtyIcon(selectedProf?.specialty) }}</span>
-            <div>
-              <p class="bp-banner-name">{{ selectedProf?.name }}</p>
-              <p class="bp-banner-sub">{{ formattedDate }} · {{ selectedSlot }}</p>
-            </div>
-          </div>
-
-          <h2 class="bp-section-title">📋 Seus dados</h2>
-
-          <div class="bp-field">
-            <label>👤 Nome completo *</label>
-            <input v-model="form.name" type="text" placeholder="Como consta no documento" class="bp-input" />
-          </div>
-          <div class="bp-field">
-            <label>🪪 CPF *</label>
-            <input :value="form.cpf" @input="onCpfInput" type="text" placeholder="000.000.000-00" maxlength="14" class="bp-input" />
-          </div>
-          <div class="bp-field">
-            <label>📱 WhatsApp</label>
-            <input :value="form.phone" @input="onPhoneInput" type="tel" placeholder="(00) 00000-0000" maxlength="15" class="bp-input" />
-          </div>
-          <div class="bp-field" v-if="selectedProf?.accepted_plans?.length || selectedProf?.accepts_particular">
-            <label>🏥 Convênio / Plano</label>
-            <select v-model="form.health_plan" class="bp-input">
-              <option value="">Selecione</option>
-              <option v-for="p in selectedProf.accepted_plans" :key="p" :value="p">{{ p }}</option>
-              <option v-if="selectedProf.accepts_particular" value="Particular">💳 Particular</option>
-            </select>
-          </div>
-
-          <div v-if="errorMsg" class="bp-error">⚠️ {{ errorMsg }}</div>
-          <div class="bp-btn-row">
-            <button class="bp-btn-ghost" @click="step = 2">← Voltar</button>
-            <button class="bp-btn-primary" @click="goToReview">Revisar →</button>
-          </div>
-        </div>
-
-        <!-- ── STEP 4: Confirmar ── -->
-        <div v-if="step === 4">
-          <h2 class="bp-section-title">✅ Confirme seu agendamento</h2>
-
-          <div class="bp-review">
-            <div class="bp-review-section">
-              <p class="bp-review-label">👨‍⚕️ Profissional</p>
-              <p class="bp-review-value">{{ selectedProf?.name }}</p>
-              <p class="bp-review-sub">{{ selectedProf?.specialty }}</p>
-            </div>
-            <div class="bp-review-section" v-if="selectedService">
-              <p class="bp-review-label">🩺 Tipo de consulta</p>
-              <p class="bp-review-value">{{ selectedService.name }}</p>
-            </div>
-            <div class="bp-review-row">
-              <div class="bp-review-section">
-                <p class="bp-review-label">📅 Data</p>
-                <p class="bp-review-value">{{ formattedDate }}</p>
-              </div>
-              <div class="bp-review-section">
-                <p class="bp-review-label">🕐 Horário</p>
-                <p class="bp-review-value">{{ selectedSlot }}</p>
-              </div>
-            </div>
-            <div class="bp-review-divider"></div>
-            <div class="bp-review-section">
-              <p class="bp-review-label">👤 Nome</p>
-              <p class="bp-review-value">{{ form.name }}</p>
-            </div>
-            <div class="bp-review-row">
-              <div class="bp-review-section">
-                <p class="bp-review-label">🪪 CPF</p>
-                <p class="bp-review-value">{{ form.cpf }}</p>
-              </div>
-              <div class="bp-review-section" v-if="form.phone">
-                <p class="bp-review-label">📱 WhatsApp</p>
-                <p class="bp-review-value">{{ form.phone }}</p>
-              </div>
-            </div>
-            <div class="bp-review-section" v-if="form.health_plan">
-              <p class="bp-review-label">🏥 Convênio</p>
-              <p class="bp-review-value">{{ form.health_plan }}</p>
-            </div>
-          </div>
-
-          <div v-if="errorMsg" class="bp-error">⚠️ {{ errorMsg }}</div>
-          <div class="bp-btn-row">
-            <button class="bp-btn-ghost" @click="step = 3" :disabled="submitting">← Editar</button>
-            <button class="bp-btn-primary" @click="submit" :disabled="submitting">
-              <span v-if="submitting">Agendando...</span>
-              <span v-else>✅ Confirmar</span>
+          <p v-if="errorMsg" class="pb-error">{{ errorMsg }}</p>
+          <div class="pb-actions">
+            <button class="pb-btn-ghost" @click="goStep(1)">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
+              Voltar
+            </button>
+            <button class="pb-btn-primary" @click="goToStep3" :disabled="!selectedSlot">
+              Continuar
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
             </button>
           </div>
-        </div>
+        </section>
 
-      </div>
+        <!-- ── Step 3: Dados ── -->
+        <section v-if="step === 3">
+          <div class="pb-banner">
+            <div class="pb-banner-avatar" :style="{ background: avatarColor(selectedProf?.specialty || '') }">
+              {{ profInitials(selectedProf?.name || '') }}
+            </div>
+            <div class="pb-banner-info">
+              <p class="pb-banner-name">{{ selectedProf?.name }}</p>
+              <p class="pb-banner-spec">{{ formattedDate }} · {{ selectedSlot }}</p>
+            </div>
+          </div>
 
-      <div class="bp-footer">
-        <p>🏥 {{ clinic?.clinic_name }} · Agendamento Online</p>
-      </div>
+          <h2 class="pb-title">Seus dados</h2>
+
+          <div class="pb-form">
+            <label class="pb-label">
+              Nome completo *
+              <input v-model="form.name" type="text" placeholder="Como consta no documento" class="pb-input" autocomplete="name" />
+            </label>
+            <label class="pb-label">
+              CPF *
+              <input :value="form.cpf" @input="onCpfInput" type="text" placeholder="000.000.000-00" maxlength="14" class="pb-input" inputmode="numeric" />
+            </label>
+            <label class="pb-label">
+              WhatsApp <span class="pb-opt">— opcional</span>
+              <input :value="form.phone" @input="onPhoneInput" type="tel" placeholder="(00) 00000-0000" maxlength="15" class="pb-input" />
+            </label>
+            <div class="pb-label" v-if="planOptions.length">
+              Convênio / Plano de saúde <span class="pb-opt">— opcional</span>
+              <div class="pb-select-wrap" @mouseleave="planOpen = false">
+                <button type="button" class="pb-custom-select pb-input" :class="{ open: planOpen }" @click="planOpen = !planOpen">
+                  <span :style="{ color: form.health_plan ? '#1e293b' : '#94a3b8' }">{{ form.health_plan || 'Selecione' }}</span>
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="6 9 12 15 18 9"/></svg>
+                </button>
+                <div v-if="planOpen" class="pb-select-dropdown">
+                  <button type="button" class="pb-select-opt" :class="{ active: form.health_plan === '' }" @click="selectPlan('')">Selecione</button>
+                  <button v-for="p in planOptions" :key="p" type="button" class="pb-select-opt" :class="{ active: form.health_plan === p }" @click="selectPlan(p)">{{ p }}</button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <p v-if="errorMsg" class="pb-error">{{ errorMsg }}</p>
+          <div class="pb-actions">
+            <button class="pb-btn-ghost" @click="goStep(2)">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
+              Voltar
+            </button>
+            <button class="pb-btn-primary" @click="goToReview">
+              Revisar
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+            </button>
+          </div>
+        </section>
+
+        <!-- ── Step 4: Confirmar ── -->
+        <section v-if="step === 4">
+          <h2 class="pb-title">Confirme seu agendamento</h2>
+
+          <div class="pb-review-card">
+            <!-- Prof section -->
+            <div class="pb-review-prof">
+              <div class="pb-banner-avatar" :style="{ background: avatarColor(selectedProf?.specialty || '') }">
+                {{ profInitials(selectedProf?.name || '') }}
+              </div>
+              <div>
+                <p class="pb-review-prof-name">{{ selectedProf?.name }}</p>
+                <p class="pb-review-prof-spec">{{ selectedProf?.specialty }}<span v-if="selectedService"> · {{ selectedService.name }}</span></p>
+              </div>
+            </div>
+            <div class="pb-review-divider"></div>
+            <!-- Date + time -->
+            <div class="pb-review-row2">
+              <div class="pb-review-field">
+                <svg class="pb-review-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+                <div><p class="pb-review-label">Data</p><p class="pb-review-value">{{ formattedDate }}</p></div>
+              </div>
+              <div class="pb-review-field">
+                <svg class="pb-review-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                <div><p class="pb-review-label">Horário</p><p class="pb-review-value">{{ selectedSlot }}</p></div>
+              </div>
+            </div>
+            <div class="pb-review-divider"></div>
+            <!-- Patient info -->
+            <div class="pb-review-field">
+              <svg class="pb-review-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+              <div><p class="pb-review-label">Nome</p><p class="pb-review-value">{{ form.name }}</p></div>
+            </div>
+            <div class="pb-review-row2">
+              <div class="pb-review-field">
+                <svg class="pb-review-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>
+                <div><p class="pb-review-label">CPF</p><p class="pb-review-value">{{ form.cpf }}</p></div>
+              </div>
+              <div v-if="form.phone" class="pb-review-field">
+                <svg class="pb-review-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.69 12a19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 3.6 1.29h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L7.91 8.9a16 16 0 0 0 6.06 6.06l.92-.92a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 21.73 16.92z"/></svg>
+                <div><p class="pb-review-label">WhatsApp</p><p class="pb-review-value">{{ form.phone }}</p></div>
+              </div>
+            </div>
+            <div v-if="form.health_plan" class="pb-review-field">
+              <svg class="pb-review-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
+              <div><p class="pb-review-label">Convênio</p><p class="pb-review-value">{{ form.health_plan }}</p></div>
+            </div>
+          </div>
+
+          <p v-if="errorMsg" class="pb-error">{{ errorMsg }}</p>
+          <div class="pb-actions">
+            <button class="pb-btn-ghost" @click="goStep(3)" :disabled="submitting">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
+              Editar
+            </button>
+            <button class="pb-btn-primary" @click="submit" :disabled="submitting">
+              <div v-if="submitting" class="pb-spinner pb-spinner--sm pb-spinner--white"></div>
+              <span>{{ submitting ? 'Agendando...' : 'Confirmar agendamento' }}</span>
+            </button>
+          </div>
+        </section>
+
+      </main>
+
+      <footer class="pb-footer">{{ clinic?.clinic_name }}</footer>
+
     </template>
   </div>
 </template>
 
-<style scoped>
-* { box-sizing: border-box; margin: 0; padding: 0; }
+<style lang="scss" scoped>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
-.bp {
-  min-height: 100dvh;
-  background: #f0fdf9;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+.pb-root {
+  position: fixed;
+  inset: 0;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+  background: #f8fafc;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif;
   color: #1e293b;
   display: flex;
   flex-direction: column;
 }
 
-/* ─── Center screens ─── */
-.bp-center {
+/* ── Fullscreen states ── */
+.pb-fullscreen {
+  flex: 1;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  min-height: 100dvh;
-  padding: 2rem 1.5rem;
+  padding: 2rem;
   text-align: center;
   gap: 1rem;
+  min-height: 100dvh;
 }
-.bp-big-icon { font-size: 4rem; line-height: 1; }
-.bp-center h2 { font-size: 1.5rem; color: #0f172a; font-weight: 700; }
-.bp-center p  { color: #64748b; font-size: 0.95rem; }
-.bp-success-title { color: #0d9488; }
-.bp-confirm-card {
-  width: 100%; max-width: 380px;
+.pb-icon-xl { width: 56px; height: 56px; color: #94a3b8; }
+.pb-fullscreen h2 { font-size: 1.4rem; font-weight: 700; color: #0f172a; }
+.pb-muted { color: #64748b; font-size: 0.9rem; line-height: 1.5; }
+.pb-success-check {
+  width: 72px; height: 72px;
+  border-radius: 50%;
+  background: #0d9488;
+  display: flex; align-items: center; justify-content: center;
+  box-shadow: 0 8px 24px rgba(13,148,136,0.35);
+  svg { width: 36px; height: 36px; }
+}
+.pb-success-title { font-size: 1.5rem; font-weight: 800; color: #0d9488; }
+.pb-confirm-card {
+  width: 100%; max-width: 360px;
   background: white;
   border-radius: 16px;
-  padding: 1.25rem;
-  box-shadow: 0 4px 20px rgba(13,148,136,0.12);
-  border: 1px solid #99f6e4;
+  border: 1px solid #e2e8f0;
+  overflow: hidden;
+  box-shadow: 0 4px 24px rgba(0,0,0,0.08);
 }
-.bp-confirm-row {
-  display: flex; justify-content: space-between; align-items: center;
-  padding: 0.65rem 0;
+.pb-confirm-header {
+  display: flex; align-items: center; gap: 0.875rem;
+  padding: 1.25rem 1.25rem 1rem;
   border-bottom: 1px solid #f1f5f9;
-  &:last-child { border-bottom: none; }
-  span  { color: #64748b; font-size: 0.85rem; }
-  strong { color: #0f172a; font-weight: 600; font-size: 0.9rem; }
 }
-.bp-note { color: #64748b; font-size: 0.875rem; }
+.pb-confirm-name { font-weight: 700; color: #0f172a; font-size: 0.975rem; }
+.pb-confirm-spec { color: #64748b; font-size: 0.8rem; margin-top: 0.15rem; }
+.pb-confirm-rows { padding: 0.5rem 1.25rem 1rem; display: flex; flex-direction: column; gap: 0.75rem; }
+.pb-confirm-row {
+  display: flex; align-items: center; gap: 0.75rem;
+}
+.pb-confirm-icon {
+  width: 36px; height: 36px; border-radius: 8px;
+  background: #f0fdf9; display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+  svg { width: 18px; height: 18px; color: #0d9488; }
+}
+.pb-confirm-label { font-size: 0.75rem; color: #94a3b8; font-weight: 500; }
+.pb-confirm-value { font-size: 0.95rem; font-weight: 700; color: #0f172a; }
 
-/* ─── Header ─── */
-.bp-header {
-  background: linear-gradient(135deg, #0d9488 0%, #0f766e 100%);
+/* ── Header ── */
+.pb-header {
+  background: linear-gradient(160deg, #0d9488 0%, #0f766e 100%);
   color: white;
   text-align: center;
   padding: 2.5rem 1.5rem 2rem;
 }
-.bp-header-icon { font-size: 2.75rem; margin-bottom: 0.5rem; }
-.bp-clinic-name { font-size: 1.5rem; font-weight: 800; letter-spacing: -0.02em; }
-.bp-clinic-sub  { font-size: 0.875rem; opacity: 0.85; margin-top: 0.25rem; }
+.pb-header-logo {
+  width: 52px; height: 52px;
+  border-radius: 14px;
+  background: rgba(255,255,255,0.2);
+  display: flex; align-items: center; justify-content: center;
+  margin: 0 auto 0.875rem;
+  backdrop-filter: blur(8px);
+  svg { width: 28px; height: 28px; }
+}
+.pb-header-name { font-size: 1.5rem; font-weight: 800; letter-spacing: -0.025em; }
+.pb-header-sub  { font-size: 0.8rem; opacity: 0.75; margin-top: 0.25rem; letter-spacing: 0.04em; text-transform: uppercase; }
 
-/* ─── Steps ─── */
-.bp-steps {
+/* ── Nav / Steps ── */
+.pb-nav {
+  background: white;
+  border-bottom: 1px solid #f1f5f9;
+  padding: 1rem 1.5rem;
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 0;
-  background: white;
-  padding: 1rem 0.5rem;
-  border-bottom: 1px solid #e2e8f0;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.05);
-  position: sticky;
-  top: 0;
-  z-index: 20;
-  overflow-x: auto;
+  position: sticky; top: 0; z-index: 30;
+  box-shadow: 0 1px 6px rgba(0,0,0,0.06);
+  position: relative;
 }
-.bp-step-item {
+.pb-nav-lines {
+  position: absolute;
+  top: 50%; left: 1.5rem; right: 1.5rem;
+  display: flex;
+  align-items: center;
+  pointer-events: none;
+  transform: translateY(-50%);
+  padding: 0 calc(50% / 4);
+  gap: calc((100% - 4 * 30px) / 3);
+  justify-content: space-between;
+}
+.pb-nav-line {
+  flex: 1;
+  height: 2px;
+  background: #e2e8f0;
+  transition: background 0.3s;
+  &.done { background: #0d9488; }
+}
+.pb-nav-item {
+  flex: 1;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 0.25rem;
-  flex: 1;
-  min-width: 60px;
+  gap: 0.3rem;
+  z-index: 1;
 }
-.bp-step-num {
+.pb-nav-dot {
   width: 30px; height: 30px;
   border-radius: 50%;
+  background: white;
+  border: 2px solid #e2e8f0;
   display: flex; align-items: center; justify-content: center;
-  font-size: 0.8rem; font-weight: 700;
-  background: #e2e8f0; color: #94a3b8;
+  font-size: 0.75rem; font-weight: 700; color: #94a3b8;
   transition: all 0.25s;
-  &.active { background: #0d9488; color: white; box-shadow: 0 0 0 3px rgba(13,148,136,0.2); }
-  &.done   { background: #dcfce7; color: #16a34a; }
+  svg { width: 14px; height: 14px; }
+  &.active { border-color: #0d9488; background: #0d9488; color: white; box-shadow: 0 0 0 4px rgba(13,148,136,0.15); }
+  &.done   { border-color: #0d9488; background: #f0fdf9; color: #0d9488; }
 }
-.bp-step-text {
-  font-size: 0.65rem;
-  color: #94a3b8;
-  font-weight: 500;
-  white-space: nowrap;
+.pb-nav-label {
+  font-size: 0.62rem; font-weight: 500; color: #94a3b8; white-space: nowrap;
   &.active { color: #0d9488; font-weight: 700; }
 }
 
-/* ─── Body ─── */
-.bp-body {
+/* ── Main ── */
+.pb-main {
   flex: 1;
-  padding: 1.5rem 1rem 2rem;
+  padding: 1.75rem 1rem 3rem;
   max-width: 560px;
   width: 100%;
   margin: 0 auto;
 }
 
-.bp-section-title {
-  font-size: 1.1rem;
-  font-weight: 700;
-  color: #0f172a;
-  margin-bottom: 1.25rem;
-}
-.bp-sub-title {
-  font-size: 0.95rem;
-  font-weight: 600;
-  color: #374151;
-  margin: 1.5rem 0 0.75rem;
-}
-.bp-optional { font-weight: 400; color: #94a3b8; font-size: 0.8rem; }
+.pb-title   { font-size: 1.1rem; font-weight: 700; color: #0f172a; margin-bottom: 1.25rem; letter-spacing: -0.01em; }
+.pb-subtitle { font-size: 0.9rem; font-weight: 600; color: #374151; margin-bottom: 0.75rem; }
+.pb-opt     { font-weight: 400; color: #94a3b8; font-size: 0.8rem; }
 
-/* ─── Professional cards ─── */
-.bp-prof-list { display: flex; flex-direction: column; gap: 0.75rem; margin-bottom: 1.5rem; }
-.bp-prof-card {
+/* ── Professional cards ── */
+.pb-prof-list { display: flex; flex-direction: column; gap: 0.75rem; margin-bottom: 1.75rem; }
+
+.pb-prof-card {
+  width: 100%;
   background: white;
-  border: 2px solid #e2e8f0;
+  border: 1.5px solid #e2e8f0;
   border-radius: 14px;
   padding: 1rem;
   cursor: pointer;
   display: flex;
   align-items: flex-start;
   gap: 0.875rem;
-  transition: all 0.2s;
-  position: relative;
-  &:active { transform: scale(0.99); }
-  &:hover  { border-color: #5eead4; box-shadow: 0 4px 12px rgba(13,148,136,0.1); }
-  &.selected { border-color: #0d9488; background: #f0fdf9; box-shadow: 0 4px 16px rgba(13,148,136,0.15); }
+  text-align: left;
+  transition: all 0.18s;
+  &:hover { border-color: #5eead4; box-shadow: 0 4px 16px rgba(13,148,136,0.1); }
+  &.is-selected { border-color: #0d9488; background: #f0fdf9; box-shadow: 0 4px 16px rgba(13,148,136,0.14); }
 }
-.bp-prof-avatar {
-  width: 52px; height: 52px;
-  border-radius: 14px;
-  background: linear-gradient(135deg, #0d9488, #0f766e);
+.pb-prof-avatar {
+  width: 48px; height: 48px; border-radius: 12px;
   display: flex; align-items: center; justify-content: center;
-  font-size: 1.5rem;
-  flex-shrink: 0;
-  box-shadow: 0 2px 8px rgba(13,148,136,0.3);
+  font-size: 1rem; font-weight: 800; color: white;
+  letter-spacing: -0.03em; flex-shrink: 0;
 }
-.bp-prof-details { flex: 1; min-width: 0; }
-.bp-prof-name { font-weight: 700; color: #0f172a; font-size: 0.975rem; margin-bottom: 0.15rem; }
-.bp-prof-spec { color: #0d9488; font-size: 0.8rem; font-weight: 600; margin-bottom: 0.3rem; }
-.bp-prof-sched { color: #64748b; font-size: 0.75rem; margin-bottom: 0.4rem; line-height: 1.4; }
-.bp-plans { display: flex; flex-wrap: wrap; gap: 0.3rem; }
-.bp-plan-badge {
-  font-size: 0.7rem; font-weight: 500;
-  padding: 0.2rem 0.55rem;
+.pb-prof-body { flex: 1; min-width: 0; }
+.pb-prof-name  { font-size: 0.95rem; font-weight: 700; color: #0f172a; }
+.pb-prof-spec  { font-size: 0.78rem; font-weight: 600; color: #0d9488; margin: 0.15rem 0 0.4rem; }
+.pb-prof-hours { font-size: 0.72rem; color: #94a3b8; line-height: 1.5; margin-bottom: 0.5rem; }
+.pb-tags  { display: flex; flex-wrap: wrap; gap: 0.3rem; }
+.pb-tag {
+  font-size: 0.68rem; font-weight: 600;
+  padding: 0.2rem 0.6rem;
   border-radius: 20px;
-  background: #f1f5f9; color: #475569;
-  &.particular { background: #dcfce7; color: #16a34a; }
+  background: #f1f5f9; color: #64748b;
+  &--green { background: #dcfce7; color: #15803d; }
 }
-.bp-check {
-  width: 26px; height: 26px;
-  border-radius: 50%;
-  background: #0d9488; color: white;
+.pb-prof-radio {
+  width: 22px; height: 22px; border-radius: 50%;
+  border: 2px solid #e2e8f0;
   display: flex; align-items: center; justify-content: center;
-  font-size: 0.8rem; font-weight: 700;
-  flex-shrink: 0;
+  flex-shrink: 0; margin-top: 2px;
+  transition: all 0.18s;
+  &.checked { background: #0d9488; border-color: #0d9488; svg { width: 12px; height: 12px; } }
 }
 
-/* ─── Services ─── */
-.bp-service-grid { display: flex; flex-wrap: wrap; gap: 0.6rem; }
-.bp-svc-card {
-  border: 2px solid #e2e8f0;
-  border-radius: 10px;
-  padding: 0.65rem 1rem;
-  cursor: pointer;
-  display: flex; flex-direction: column; gap: 0.15rem;
-  transition: all 0.2s;
-  &:hover   { border-color: #5eead4; }
-  &.selected { border-color: #0d9488; background: #f0fdf9; }
+/* ── Services ── */
+.pb-services { margin-bottom: 1.5rem; }
+.pb-svc-grid { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+.pb-select-wrap { position: relative; margin-top: 0.4rem; }
+.pb-custom-select {
+  width: 100%; display: flex; justify-content: space-between; align-items: center;
+  cursor: pointer; text-align: left;
+  svg { width: 16px; height: 16px; color: #94a3b8; flex-shrink: 0; transition: transform 0.2s; }
+  &.open { border-color: #0d9488; box-shadow: 0 0 0 3px rgba(13,148,136,0.1); svg { transform: rotate(180deg); } }
 }
-.bp-svc-name  { font-weight: 600; color: #1e293b; font-size: 0.875rem; }
-.bp-svc-price { color: #0d9488; font-size: 0.8rem; font-weight: 600; }
+.pb-select-dropdown {
+  position: absolute; top: calc(100% + 4px); left: 0; right: 0; z-index: 200;
+  background: white; border: 1.5px solid #0d9488; border-radius: 10px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.12); overflow: hidden;
+  max-height: 220px; overflow-y: auto;
+}
+.pb-select-opt {
+  width: 100%; text-align: left; padding: 0.75rem 1rem;
+  background: none; border: none; border-bottom: 1px solid #f1f5f9;
+  cursor: pointer; font-size: 0.9rem; color: #374151;
+  &:last-child { border-bottom: none; }
+  &:hover { background: #f0fdf9; color: #0d9488; }
+  &.active { background: #f0fdf9; color: #0d9488; font-weight: 600; }
+}
+.pb-svc {
+  border: 1.5px solid #e2e8f0; border-radius: 10px;
+  padding: 0.6rem 1rem; cursor: pointer;
+  display: flex; flex-direction: column; gap: 0.1rem;
+  background: white; text-align: left;
+  transition: all 0.18s;
+  &:hover { border-color: #5eead4; }
+  &.is-selected { border-color: #0d9488; background: #f0fdf9; }
+}
+.pb-svc-name  { font-size: 0.85rem; font-weight: 600; color: #1e293b; }
+.pb-svc-price { font-size: 0.78rem; color: #0d9488; font-weight: 600; }
 
-/* ─── Banner (step 2+) ─── */
-.bp-banner {
-  display: flex;
-  align-items: center;
-  gap: 0.875rem;
-  background: #f0fdf9;
-  border: 1px solid #99f6e4;
-  border-radius: 12px;
-  padding: 0.875rem 1rem;
+/* ── Banner ── */
+.pb-banner {
+  display: flex; align-items: center; gap: 0.875rem;
+  background: white; border: 1px solid #e2e8f0;
+  border-radius: 12px; padding: 0.875rem 1rem;
   margin-bottom: 1.5rem;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.05);
 }
-.bp-banner-icon { font-size: 2rem; }
-.bp-banner-name { font-weight: 700; color: #0f172a; font-size: 0.95rem; }
-.bp-banner-sub  { color: #0d9488; font-size: 0.8rem; margin-top: 0.1rem; }
-
-/* ─── Date input ─── */
-.bp-date-input {
-  width: 100%;
-  padding: 0.875rem 1rem;
-  border: 2px solid #e2e8f0;
-  border-radius: 10px;
-  font-size: 1rem;
-  color: #1e293b;
-  background: white;
-  outline: none;
-  margin-bottom: 0.5rem;
-  &:focus { border-color: #0d9488; }
+.pb-banner-avatar {
+  width: 42px; height: 42px; border-radius: 10px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 0.85rem; font-weight: 800; color: white; flex-shrink: 0;
+}
+.pb-banner-info { flex: 1; min-width: 0; }
+.pb-banner-name { font-weight: 700; color: #0f172a; font-size: 0.9rem; }
+.pb-banner-spec { color: #64748b; font-size: 0.78rem; margin-top: 0.1rem; }
+.pb-banner-change {
+  font-size: 0.78rem; font-weight: 600; color: #0d9488;
+  background: none; border: none; cursor: pointer; white-space: nowrap;
+  padding: 0.25rem 0.5rem; border-radius: 6px;
+  &:hover { background: #f0fdf9; }
 }
 
-/* ─── Slots ─── */
-.bp-slots-wrap { margin-top: 0.5rem; }
-.bp-loading-slots {
+/* ── Date ── */
+.pb-date {
+  width: 100%; padding: 0.875rem 1rem;
+  border: 1.5px solid #e2e8f0; border-radius: 10px;
+  font-size: 1rem; color: #1e293b;
+  background: white; outline: none;
+  margin-bottom: 0.75rem;
+  &:focus { border-color: #0d9488; box-shadow: 0 0 0 3px rgba(13,148,136,0.1); }
+}
+
+/* ── Slots ── */
+.pb-loading {
   display: flex; align-items: center; gap: 0.75rem;
-  color: #64748b; padding: 1rem; font-size: 0.9rem;
+  color: #64748b; font-size: 0.875rem; padding: 0.75rem 0;
 }
-.bp-no-slots {
-  background: #fef9c3;
-  border: 1px solid #fde047;
-  border-radius: 10px;
-  padding: 1rem;
-  color: #854d0e;
-  text-align: center;
-  font-size: 0.875rem;
-  line-height: 1.5;
-  margin-top: 0.75rem;
+.pb-empty-slots {
+  background: #fff7ed; border: 1px solid #fed7aa;
+  border-radius: 10px; padding: 1.25rem;
+  text-align: center; color: #92400e;
+  svg { width: 28px; height: 28px; margin: 0 auto 0.5rem; display: block; }
+  p { font-weight: 600; font-size: 0.9rem; }
+  span { font-size: 0.8rem; color: #b45309; }
 }
-.bp-period { font-size: 0.85rem; font-weight: 600; color: #374151; margin-bottom: 0.6rem; }
-.bp-slot-grid { display: flex; flex-wrap: wrap; gap: 0.5rem; }
-.bp-slot {
-  padding: 0.55rem 1rem;
-  border: 2px solid #e2e8f0;
-  border-radius: 8px;
-  background: white;
-  cursor: pointer;
-  font-size: 0.9rem;
-  font-weight: 600;
-  color: #374151;
-  min-width: 68px;
-  text-align: center;
-  transition: all 0.15s;
-  &:hover   { border-color: #0d9488; color: #0d9488; background: #f0fdf9; }
-  &.selected { border-color: #0d9488; background: #0d9488; color: white; }
+.pb-slots-group { margin-bottom: 1.25rem; }
+.pb-slots-label {
+  display: flex; align-items: center; gap: 0.4rem;
+  font-size: 0.8rem; font-weight: 600; color: #64748b;
+  margin-bottom: 0.6rem;
+  svg { width: 16px; height: 16px; color: #94a3b8; }
+}
+.pb-slots { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+.pb-slot {
+  padding: 0.55rem 0.875rem; min-width: 64px;
+  border: 1.5px solid #e2e8f0; border-radius: 8px;
+  background: white; cursor: pointer;
+  font-size: 0.875rem; font-weight: 600; color: #374151;
+  text-align: center; transition: all 0.15s;
+  &:hover { border-color: #0d9488; color: #0d9488; background: #f0fdf9; }
+  &.is-selected { border-color: #0d9488; background: #0d9488; color: white; }
 }
 
-/* ─── Form fields ─── */
-.bp-field {
-  margin-bottom: 1.1rem;
-  label { display: block; font-size: 0.85rem; font-weight: 600; color: #374151; margin-bottom: 0.4rem; }
+/* ── Form ── */
+.pb-form { display: flex; flex-direction: column; gap: 1.1rem; margin-bottom: 0.5rem; }
+.pb-label {
+  display: flex; flex-direction: column; gap: 0.4rem;
+  font-size: 0.82rem; font-weight: 600; color: #374151;
 }
-.bp-input {
-  width: 100%;
+.pb-input {
   padding: 0.875rem 1rem;
-  border: 2px solid #e2e8f0;
-  border-radius: 10px;
-  font-size: 0.95rem;
-  color: #1e293b;
-  background: white;
-  outline: none;
-  transition: border-color 0.2s;
-  &:focus { border-color: #0d9488; }
+  border: 1.5px solid #e2e8f0; border-radius: 10px;
+  font-size: 0.95rem; color: #1e293b;
+  background: white; outline: none;
+  width: 100%;
+  transition: all 0.18s;
+  &:focus { border-color: #0d9488; box-shadow: 0 0 0 3px rgba(13,148,136,0.1); }
+  &::placeholder { color: #94a3b8; }
+}
+select.pb-input {
+  appearance: none;
+  -webkit-appearance: none;
+  padding-right: 2.75rem;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 0.875rem center;
+  cursor: pointer;
+  &:focus { border-color: #0d9488; box-shadow: 0 0 0 3px rgba(13,148,136,0.1); }
 }
 
-/* ─── Review ─── */
-.bp-review {
-  background: white;
-  border: 1px solid #e2e8f0;
-  border-radius: 16px;
-  padding: 1.25rem;
+/* ── Review card ── */
+.pb-review-card {
+  background: white; border: 1px solid #e2e8f0;
+  border-radius: 16px; padding: 1.25rem;
+  box-shadow: 0 2px 16px rgba(0,0,0,0.06);
   margin-bottom: 1.5rem;
-  box-shadow: 0 2px 12px rgba(0,0,0,0.06);
+  display: flex; flex-direction: column; gap: 0.875rem;
 }
-.bp-review-section { margin-bottom: 0.75rem; }
-.bp-review-row {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 0.5rem;
+.pb-review-prof {
+  display: flex; align-items: center; gap: 0.875rem;
 }
-.bp-review-label { font-size: 0.75rem; color: #94a3b8; font-weight: 500; margin-bottom: 0.1rem; }
-.bp-review-value { font-size: 0.95rem; font-weight: 700; color: #0f172a; }
-.bp-review-sub   { font-size: 0.8rem; color: #64748b; margin-top: 0.1rem; }
-.bp-review-divider {
-  border-top: 2px dashed #e2e8f0;
-  margin: 0.75rem 0;
+.pb-review-prof-name { font-weight: 700; color: #0f172a; font-size: 0.95rem; }
+.pb-review-prof-spec { color: #64748b; font-size: 0.8rem; margin-top: 0.15rem; }
+.pb-review-divider { height: 1px; background: #f1f5f9; }
+.pb-review-row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; }
+.pb-review-field { display: flex; align-items: flex-start; gap: 0.625rem; }
+.pb-review-icon {
+  width: 36px; height: 36px; border-radius: 8px;
+  background: #f8fafc; display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+  svg { width: 18px; height: 18px; color: #64748b; }
 }
+.pb-review-label { font-size: 0.72rem; color: #94a3b8; font-weight: 500; margin-bottom: 0.15rem; }
+.pb-review-value { font-size: 0.9rem; font-weight: 700; color: #0f172a; }
 
-/* ─── Buttons ─── */
-.bp-btn-primary {
+/* ── Buttons ── */
+.pb-btn-primary {
+  display: inline-flex; align-items: center; justify-content: center; gap: 0.5rem;
   background: #0d9488; color: white;
   border: none; border-radius: 10px;
   padding: 0.9rem 1.5rem;
-  font-size: 0.975rem; font-weight: 700;
+  font-size: 0.925rem; font-weight: 700;
   cursor: pointer;
-  transition: all 0.2s;
-  flex: 1;
-  &:hover:not(:disabled) { background: #0f766e; transform: translateY(-1px); box-shadow: 0 4px 12px rgba(13,148,136,0.35); }
-  &:disabled { opacity: 0.6; cursor: not-allowed; }
-  &.full { width: 100%; margin-top: 1.5rem; }
+  transition: all 0.18s;
+  svg { width: 16px; height: 16px; }
+  &:hover:not(:disabled) { background: #0f766e; box-shadow: 0 4px 14px rgba(13,148,136,0.35); transform: translateY(-1px); }
+  &:disabled { opacity: 0.55; cursor: not-allowed; transform: none; }
+  &.pb-btn-full { width: 100%; margin-top: 1.5rem; }
 }
-.bp-btn-ghost {
-  background: transparent; color: #64748b;
-  border: 2px solid #e2e8f0; border-radius: 10px;
+.pb-actions .pb-btn-primary { flex: 1; }
+.pb-btn-ghost {
+  display: inline-flex; align-items: center; justify-content: center; gap: 0.4rem;
+  background: white; color: #64748b;
+  border: 1.5px solid #e2e8f0; border-radius: 10px;
   padding: 0.9rem 1.25rem;
-  font-size: 0.9rem; font-weight: 600;
-  cursor: pointer;
-  transition: all 0.2s;
+  font-size: 0.875rem; font-weight: 600;
+  cursor: pointer; white-space: nowrap;
+  transition: all 0.18s;
+  svg { width: 15px; height: 15px; }
   &:hover { border-color: #94a3b8; color: #374151; }
+  &:disabled { opacity: 0.5; cursor: not-allowed; }
 }
-.bp-btn-row {
-  display: flex;
-  gap: 0.75rem;
-  margin-top: 1.5rem;
-}
-
-/* ─── Error ─── */
-.bp-error {
-  background: #fef2f2;
-  border: 1px solid #fecaca;
-  border-radius: 10px;
-  padding: 0.875rem 1rem;
-  color: #dc2626;
-  font-size: 0.875rem;
-  margin-bottom: 1rem;
-  line-height: 1.5;
+.pb-actions {
+  display: flex; gap: 0.75rem; margin-top: 1.5rem;
 }
 
-/* ─── Spinner ─── */
-.bp-spinner {
+/* ── Error ── */
+.pb-error {
+  background: #fef2f2; border: 1px solid #fecaca;
+  border-radius: 10px; padding: 0.875rem 1rem;
+  color: #dc2626; font-size: 0.875rem; line-height: 1.5;
+  margin-bottom: 0.25rem;
+}
+
+/* ── Spinner ── */
+.pb-spinner {
   width: 40px; height: 40px;
-  border: 3px solid #e2e8f0;
-  border-top-color: #0d9488;
-  border-radius: 50%;
-  animation: spin 0.7s linear infinite;
-  &.small { width: 22px; height: 22px; border-width: 2px; }
+  border: 3px solid #e2e8f0; border-top-color: #0d9488;
+  border-radius: 50%; animation: pb-spin 0.7s linear infinite;
+  &--sm { width: 18px; height: 18px; border-width: 2px; }
+  &--white { border-color: rgba(255,255,255,0.3); border-top-color: white; }
 }
-@keyframes spin { to { transform: rotate(360deg); } }
+@keyframes pb-spin { to { transform: rotate(360deg); } }
 
-/* ─── Footer ─── */
-.bp-footer {
-  text-align: center;
-  padding: 1.5rem;
-  color: #94a3b8;
-  font-size: 0.8rem;
-  border-top: 1px solid #e2e8f0;
-  background: white;
+/* ── Footer ── */
+.pb-footer {
+  text-align: center; padding: 1.25rem;
+  color: #cbd5e1; font-size: 0.75rem;
+  border-top: 1px solid #f1f5f9; background: white;
 }
 
-/* ─── Mobile tweaks ─── */
-@media (max-width: 480px) {
-  .bp-header { padding: 2rem 1rem 1.5rem; }
-  .bp-clinic-name { font-size: 1.3rem; }
-  .bp-body { padding: 1.25rem 0.875rem 2rem; }
-  .bp-step-text { display: none; }
-  .bp-steps { gap: 0; padding: 0.75rem 0.5rem; }
-  .bp-step-item { flex: 0; padding: 0 0.5rem; }
-  .bp-btn-row { flex-direction: column; }
-  .bp-btn-ghost { order: 2; }
-  .bp-btn-primary { order: 1; }
-  .bp-review-row { grid-template-columns: 1fr; }
-  .bp-slot { min-width: 60px; font-size: 0.85rem; padding: 0.5rem 0.75rem; }
+/* ── Mobile ── */
+@media (max-width: 420px) {
+  .pb-header { padding: 2rem 1.25rem 1.75rem; }
+  .pb-header-name { font-size: 1.3rem; }
+  .pb-nav-label { display: none; }
+  .pb-nav { padding: 0.875rem 1.25rem; }
+  .pb-main { padding: 1.5rem 0.875rem 3rem; }
+  .pb-actions { flex-direction: column; .pb-btn-ghost { order: 2; } .pb-btn-primary { order: 1; } }
+  .pb-review-row2 { grid-template-columns: 1fr; }
+  .pb-slot { min-width: 58px; padding: 0.5rem 0.75rem; }
 }
 </style>

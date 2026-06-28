@@ -84,7 +84,7 @@ const handleRegister = async () => {
     <div class="register-panel">
       <div class="auth-card">
         <div class="auth-header">
-          <h2>Cadastrar imobiliária</h2>
+          <h2>Cadastrar clínica</h2>
           <p>Crie sua conta gratuitamente e comece agora.</p>
         </div>
 
@@ -92,12 +92,12 @@ const handleRegister = async () => {
 
           <!-- Empresa -->
           <div class="form-section-label">
-            <Building2 :size="14" /> Dados da empresa
+            <Building2 :size="14" /> Dados da clínica
           </div>
 
           <div class="form-group">
-            <label>Nome da imobiliária</label>
-            <input v-model="form.company_name" type="text" placeholder="Ex: Imobiliária Central" required />
+            <label>Nome da clínica</label>
+            <input v-model="form.company_name" type="text" placeholder="Ex: Clínica Saúde Total" required />
           </div>
 
           <!-- Responsável -->
@@ -119,7 +119,7 @@ const handleRegister = async () => {
           <div class="form-row">
             <div class="form-group">
               <label>E-mail</label>
-              <input v-model="form.email" type="email" placeholder="joao@imobiliaria.com.br" required />
+              <input v-model="form.email" type="email" placeholder="medico@clinica.com.br" required />
             </div>
             <div class="form-group">
               <label>WhatsApp <span class="optional">(opcional)</span></label>

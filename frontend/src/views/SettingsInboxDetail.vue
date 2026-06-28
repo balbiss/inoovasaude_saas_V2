@@ -1,7 +1,7 @@
 <script setup>
-import { ref, onMounted, watch } from 'vue'
+import { ref, onMounted, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { ChevronLeft, Sparkles } from 'lucide-vue-next'
+import { ChevronLeft, Sparkles, Wifi, WifiOff, QrCode } from 'lucide-vue-next'
 import api from '../api'
 import Swal from 'sweetalert2'
 import PromptGeneratorModal from '../components/PromptGeneratorModal.vue'
@@ -22,6 +22,11 @@ const activeTab = ref('settings')
 const agents = ref([])
 const isLoadingAgents = ref(false)
 const isPromptModalOpen = ref(false)
+const isConnected = ref(false)
+const showQrModal = ref(false)
+const qrCodeData = ref(null)
+const qrLoading = ref(false)
+let qrPollInterval = null
 
 const handlePromptGenerated = (generatedPrompt) => {
   inbox.value.ai_prompt = generatedPrompt
@@ -87,9 +92,91 @@ const toggleAgent = async (agent) => {
   }
 }
 
+const fetchConnectionStatus = async () => {
+  if (!inbox.value?.id) return
+  try {
+    const r = await api.get(`/inboxes/${inbox.value.id}/status`)
+    isConnected.value = r.data.connected
+  } catch {}
+}
+
+const disconnect = async () => {
+  const confirm = await Swal.fire({
+    title: 'Desconectar WhatsApp?',
+    text: 'A caixa de entrada ficará offline. Você poderá reconectar a qualquer momento.',
+    icon: 'warning',
+    showCancelButton: true,
+    confirmButtonText: 'Desconectar',
+    cancelButtonText: 'Cancelar',
+    confirmButtonColor: '#ef4444'
+  })
+  if (!confirm.isConfirmed) return
+  try {
+    await api.post(`/inboxes/${inbox.value.id}/disconnect`)
+    isConnected.value = false
+    Swal.fire({ toast: true, position: 'top-end', icon: 'success', title: 'WhatsApp desconectado.', showConfirmButton: false, timer: 3000 })
+  } catch {
+    Swal.fire({ toast: true, position: 'top-end', icon: 'error', title: 'Erro ao desconectar.', showConfirmButton: false, timer: 3000 })
+  }
+}
+
+const openQrModal = async () => {
+  showQrModal.value = true
+  qrCodeData.value = null
+  qrLoading.value = true
+  try {
+    await api.post(`/inboxes/${inbox.value.id}/reconnect`)
+  } catch {}
+
+  const fetchQr = async () => {
+    try {
+      const r = await api.get(`/inboxes/${inbox.value.id}/qr_code`)
+      if (r.data.qr_code) {
+        qrCodeData.value = r.data.qr_code
+        qrLoading.value = false
+      }
+    } catch {}
+  }
+  await fetchQr()
+
+  qrPollInterval = setInterval(async () => {
+    try {
+      const s = await api.get(`/inboxes/${inbox.value.id}/status`)
+      if (s.data.connected) {
+        isConnected.value = true
+        showQrModal.value = false
+        clearInterval(qrPollInterval)
+        qrPollInterval = null
+        Swal.fire({ toast: true, position: 'top-end', icon: 'success', title: 'WhatsApp conectado!', showConfirmButton: false, timer: 3000 })
+        return
+      }
+      await fetchQr()
+    } catch {}
+  }, 4000)
+}
+
+const closeQrModal = () => {
+  showQrModal.value = false
+  if (qrPollInterval) { clearInterval(qrPollInterval); qrPollInterval = null }
+}
+
+const handleInboxUpdated = (e) => {
+  if (e.detail?.inbox_id === inbox.value?.id) {
+    if (e.detail.connection_status === 'open') isConnected.value = true
+    else if (e.detail.connection_status === 'close') isConnected.value = false
+    if (e.detail.qr_code) { qrCodeData.value = e.detail.qr_code; qrLoading.value = false }
+  }
+}
+
 onMounted(() => {
-  fetchInbox()
+  fetchInbox().then(fetchConnectionStatus)
   fetchAgents()
+  window.addEventListener('inbox-updated', handleInboxUpdated)
+})
+
+onUnmounted(() => {
+  window.removeEventListener('inbox-updated', handleInboxUpdated)
+  if (qrPollInterval) { clearInterval(qrPollInterval); qrPollInterval = null }
 })
 
 const goBack = () => {
@@ -191,10 +278,51 @@ const saveSettings = async () => {
             </div>
           </div>
 
+          <!-- Status de Conexão WhatsApp -->
+          <div class="form-row" v-if="inbox.provider === 'baileys'">
+            <div class="label-col">
+              <label>Conexão WhatsApp</label>
+              <p style="color:var(--text-muted);font-size:0.82rem;margin-top:0.25rem">Status atual do dispositivo conectado.</p>
+            </div>
+            <div class="input-col">
+              <div class="connection-status-box" :class="isConnected ? 'connected' : 'disconnected'">
+                <div class="conn-left">
+                  <Wifi v-if="isConnected" :size="20" />
+                  <WifiOff v-else :size="20" />
+                  <span>{{ isConnected ? 'Conectado' : 'Desconectado' }}</span>
+                </div>
+                <div class="conn-actions">
+                  <button v-if="isConnected" class="btn-disconnect" @click="disconnect">
+                    <WifiOff :size="14" /> Desconectar
+                  </button>
+                  <button v-else class="btn-qr" @click="openQrModal">
+                    <QrCode :size="14" /> Conectar via QR Code
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+
           <div class="form-actions">
             <button class="btn-primary" @click="saveSettings">Atualizar</button>
           </div>
-          
+
+        </div>
+      </div>
+
+      <!-- QR Code Modal -->
+      <div class="qr-modal-overlay" v-if="showQrModal" @click.self="closeQrModal">
+        <div class="qr-modal">
+          <button class="qr-modal-close" @click="closeQrModal">✕</button>
+          <h3>Conectar WhatsApp</h3>
+          <p>Abra o WhatsApp no celular → Dispositivos conectados → Conectar dispositivo</p>
+          <div class="qr-body">
+            <div v-if="qrLoading && !qrCodeData" class="qr-loading">
+              <div class="spinner"></div>
+              <span>Aguardando QR Code...</span>
+            </div>
+            <img v-else-if="qrCodeData" :src="qrCodeData" alt="QR Code" class="qr-image" />
+          </div>
         </div>
       </div>
       
@@ -818,5 +946,149 @@ const saveSettings = async () => {
 
 .btn-magic-sm:hover {
   opacity: 0.9;
+}
+
+/* Connection Status */
+.connection-status-box {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.9rem 1.25rem;
+  border-radius: 8px;
+  border: 1px solid;
+  gap: 1rem;
+
+  &.connected {
+    background: #f0fdf4;
+    border-color: #bbf7d0;
+    color: #16a34a;
+  }
+  &.disconnected {
+    background: #fef2f2;
+    border-color: #fecaca;
+    color: #dc2626;
+  }
+}
+
+.conn-left {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  font-weight: 600;
+  font-size: 0.95rem;
+}
+
+.conn-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.btn-disconnect {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.45rem 1rem;
+  background: #ef4444;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  font-size: 0.85rem;
+  font-weight: 500;
+  cursor: pointer;
+  &:hover { background: #dc2626; }
+}
+
+.btn-qr {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.45rem 1rem;
+  background: #16a34a;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  font-size: 0.85rem;
+  font-weight: 500;
+  cursor: pointer;
+  &:hover { background: #15803d; }
+}
+
+/* QR Modal */
+.qr-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+}
+
+.qr-modal {
+  background: var(--bg-primary);
+  border-radius: 12px;
+  padding: 2rem;
+  width: 360px;
+  text-align: center;
+  position: relative;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.25);
+
+  h3 {
+    font-size: 1.2rem;
+    font-weight: 700;
+    color: var(--text-main);
+    margin: 0 0 0.5rem;
+  }
+  p {
+    font-size: 0.85rem;
+    color: var(--text-muted);
+    margin: 0 0 1.5rem;
+  }
+}
+
+.qr-modal-close {
+  position: absolute;
+  top: 1rem;
+  right: 1rem;
+  background: none;
+  border: none;
+  font-size: 1.1rem;
+  cursor: pointer;
+  color: var(--text-muted);
+  &:hover { color: var(--text-main); }
+}
+
+.qr-body {
+  min-height: 200px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.qr-loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1rem;
+  color: var(--text-muted);
+  font-size: 0.9rem;
+}
+
+.spinner {
+  width: 36px;
+  height: 36px;
+  border: 3px solid var(--border-color);
+  border-top-color: var(--primary);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.qr-image {
+  width: 220px;
+  height: 220px;
+  border-radius: 8px;
+  border: 1px solid var(--border-color);
 }
 </style>

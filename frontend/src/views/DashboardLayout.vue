@@ -1139,7 +1139,7 @@ const handleLogout = () => {
   overflow-y: auto;
   overflow-x: hidden;
   min-width: 0;
-  height: 100%;
+  min-height: 0;
 }
 
 .content-area {

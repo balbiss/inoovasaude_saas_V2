@@ -12,10 +12,10 @@ const isLoading = ref(false)
 const showPassword = ref(false)
 
 const DEPARTMENTS = [
-  { value: 'corretor',    label: 'Corretor',    desc: 'Atende novos leads de venda e locação' },
-  { value: 'suporte',     label: 'Suporte',     desc: 'Atende clientes com problemas no imóvel' },
-  { value: 'financeiro',  label: 'Financeiro',  desc: 'Cobranças, boletos e contratos' },
-  { value: 'manutencao',  label: 'Manutenção',  desc: 'Reparos e serviços técnicos' },
+  { value: 'medico',      label: 'Médico',      desc: 'Atende pacientes, realiza consultas' },
+  { value: 'secretaria',  label: 'Secretária',  desc: 'Gestão da clínica e agendamentos' },
+  { value: 'suporte',     label: 'Suporte',     desc: 'Atendimento e suporte aos pacientes' },
+  { value: 'financeiro',  label: 'Financeiro',  desc: 'Cobranças e contratos' },
 ]
 
 const form = ref({
@@ -24,12 +24,11 @@ const form = ref({
   email: '',
   phone: '',
   password: '',
-  department: 'corretor',
+  department: 'medico',
   status: 'active',
   permissions: {
     admin: false,
     view_all_contacts: true,
-    view_all_properties: true,
     export_data: false,
     delete_data: false,
     view_all_appointments: true
@@ -47,12 +46,11 @@ const fetchAgent = async (id) => {
       email: data.email || '',
       phone: data.phone || '',
       password: '',
-      department: data.department || 'corretor',
+      department: data.department || 'medico',
       status: data.status || 'active',
       permissions: data.permissions || {
         admin: false,
         view_all_contacts: false,
-        view_all_properties: false,
         export_data: false,
         delete_data: false,
         view_all_appointments: false
@@ -135,7 +133,7 @@ const saveAgent = async () => {
 
         <div class="input-group">
           <label>E-mail de Login</label>
-          <input type="email" v-model="form.email" required placeholder="joao@imobiliaria.com" />
+          <input type="email" v-model="form.email" required placeholder="joao@clinica.com" />
         </div>
 
         <div class="input-group">
@@ -185,7 +183,7 @@ const saveAgent = async () => {
       <!-- Coluna da Direita: Permissões -->
       <div class="card permissions-card">
         <h3>Permissões de Acesso</h3>
-        <p class="subtitle">Defina o que este corretor poderá ver ou fazer no sistema.</p>
+        <p class="subtitle">Defina o que este profissional poderá ver ou fazer no sistema.</p>
 
         <div class="permission-item admin-highlight">
           <label class="switch-container">
@@ -206,25 +204,12 @@ const saveAgent = async () => {
           <div class="permission-item">
             <label class="switch-container">
               <div class="toggle-switch">
-                <input type="checkbox" v-model="form.permissions.view_all_properties" :disabled="form.permissions.admin">
-                <span class="slider"></span>
-              </div>
-              <div class="perm-text">
-                <strong>Ver Todos os Imóveis</strong>
-                <span>Se desmarcado, ele só verá os imóveis captados por ele mesmo.</span>
-              </div>
-            </label>
-          </div>
-
-          <div class="permission-item">
-            <label class="switch-container">
-              <div class="toggle-switch">
                 <input type="checkbox" v-model="form.permissions.view_all_contacts" :disabled="form.permissions.admin">
                 <span class="slider"></span>
               </div>
               <div class="perm-text">
-                <strong>Ver Todos os Clientes</strong>
-                <span>Se desmarcado, ele só verá os clientes atribuídos a ele.</span>
+                <strong>Ver Todos os Pacientes</strong>
+                <span>Se desmarcado, ele só verá os pacientes atribuídos a ele.</span>
               </div>
             </label>
           </div>
@@ -237,7 +222,7 @@ const saveAgent = async () => {
               </div>
               <div class="perm-text">
                 <strong>Permitir Exportação</strong>
-                <span>Pode baixar listas de clientes e relatórios em CSV/Excel.</span>
+                <span>Pode baixar listas de pacientes e relatórios em CSV/Excel.</span>
               </div>
             </label>
           </div>
@@ -276,7 +261,7 @@ const saveAgent = async () => {
       <div class="actions">
         <button class="btn-cancel" @click="router.push('/agentes')">Cancelar</button>
         <button class="btn-primary" @click="saveAgent">
-          <Save class="icon-sm" /> {{ isEditing ? 'Salvar Alterações' : 'Criar Corretor' }}
+          <Save class="icon-sm" /> {{ isEditing ? 'Salvar Alterações' : 'Criar Profissional' }}
         </button>
       </div>
     </div>
@@ -286,9 +271,9 @@ const saveAgent = async () => {
 <style lang="scss" scoped>
 .page-container {
   padding: 2rem;
-  padding-bottom: 8rem;
+  padding-bottom: 120px;
   background: var(--bg-primary);
-  min-height: 100%;
+  min-height: 100vh;
 }
 
 .page-header {
@@ -418,13 +403,12 @@ const saveAgent = async () => {
 .text-danger-hover:hover strong { color: #ef4444; }
 
 .bottom-bar {
-  position: fixed; bottom: 0; left: 0; right: 0;
+  position: fixed; bottom: 0; left: 256px; right: 0;
   background: var(--bg-secondary);
   border-top: 1px solid var(--border-color);
   padding: 1rem 2rem;
   z-index: 100;
   .actions {
-    max-width: 1200px; margin: 0 auto;
     display: flex; justify-content: flex-end; gap: 1rem;
   }
 }
@@ -471,10 +455,10 @@ const saveAgent = async () => {
   width: 10px; height: 10px;
   border-radius: 50%;
   flex-shrink: 0;
-  &.dept-corretor   { background: #4338ca; }
+  &.dept-medico     { background: #0d9488; }
+  &.dept-secretaria { background: #4338ca; }
   &.dept-suporte    { background: #10b981; }
   &.dept-financeiro { background: #f59e0b; }
-  &.dept-manutencao { background: #f97316; }
 }
 .dept-info {
   display: flex; flex-direction: column; gap: 0.1rem;

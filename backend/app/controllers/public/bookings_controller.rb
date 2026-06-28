@@ -92,32 +92,32 @@ module Public
         return render_error(contact.errors.full_messages.join(', ')) unless contact.save
       end
 
-      # Double booking check
+      # Double booking check (per professional)
       if @account.block_double_booking != false
         existing = @account.appointments
-          .where(contact_id: contact.id, status: %w[agendado confirmado])
+          .where(contact_id: contact.id, professional_id: professional.id, status: %w[agendado confirmado])
           .where('appointment_date >= ?', Date.current)
           .first
 
         if existing
           date_fmt = existing.appointment_date.strftime('%d/%m/%Y')
-          return render_error("Você já tem uma consulta agendada para #{date_fmt} às #{existing.start_time}. " \
+          return render_error("Você já tem uma consulta agendada com #{professional.name} para #{date_fmt} às #{existing.start_time}. " \
                               "Finalize ou cancele antes de agendar uma nova.")
         end
       end
 
-      # Return block check
+      # Return block check (per professional)
       retorno_days = @account.retorno_days.to_i
       if retorno_days > 0
         last_done = @account.appointments
-          .where(contact_id: contact.id, status: %w[compareceu retorno])
+          .where(contact_id: contact.id, professional_id: professional.id, status: %w[compareceu retorno])
           .where('appointment_date >= ?', retorno_days.days.ago.to_date)
           .order(appointment_date: :desc)
           .first
 
         if last_done
           next_date = last_done.appointment_date + retorno_days.days
-          return render_error("Agendamento bloqueado. Você se consultou em #{last_done.appointment_date.strftime('%d/%m/%Y')}. " \
+          return render_error("Agendamento bloqueado. Você se consultou com #{professional.name} em #{last_done.appointment_date.strftime('%d/%m/%Y')}. " \
                               "Retorno disponível a partir de #{next_date.strftime('%d/%m/%Y')} (#{retorno_days} dias de intervalo).")
         end
       end

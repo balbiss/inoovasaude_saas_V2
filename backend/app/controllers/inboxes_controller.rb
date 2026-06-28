@@ -119,15 +119,19 @@ class InboxesController < ApplicationController
     data = params.require(:prompt_data).permit(:identity, :institutional, :faq, :greeting_message, :sdr_rules, :routing_rules, :ai_role, :allow_scheduling, :use_whatsapp_name, :emoji_usage, :prohibited_actions)
     
     system_prompt = <<~PROMPT
-      Você é um Engenheiro de Prompts especialista em IA para Imobiliárias.
-      Sua tarefa é criar um System Prompt detalhado, persuasivo e à prova de falhas para a IA de uma imobiliária, baseado nas informações fornecidas.
-      O prompt gerado será usado como a diretriz de comportamento primária da IA.
+      Você é um Engenheiro de Prompts especialista em IA para Clínicas de Saúde.
+      Sua tarefa é criar um System Prompt detalhado, preciso e à prova de falhas para a IA de atendimento de uma clínica, baseado nas informações fornecidas.
+      O prompt gerado será usado como a diretriz de comportamento primária da IA no WhatsApp da clínica.
       Sempre retorne APENAS o texto do prompt final, sem introduções ou explicações.
     PROMPT
-    
-    role_instruction = data[:ai_role] == 'sdr_only' ? "ATUAÇÃO RESTRITA A SDR: A IA NÃO pode ofertar imóveis aleatórios. O objetivo é APENAS qualificar o lead." : "ATUAÇÃO COMPLETA: A IA atua como SDR e como Corretora, podendo qualificar, pesquisar imóveis no banco e ofertar de forma vendedora."
-    schedule_instruction = data[:allow_scheduling] ? "AGENDAMENTO AUTOMÁTICO: A IA PODE e DEVE realizar o agendamento automatizado no sistema quando o cliente quiser visitar." : "SEM AGENDAMENTO: A IA NÃO DEVE prometer agendamento automatizado. O agendamento é feito pelo corretor humano, a IA deve apenas anotar o interesse e transferir o atendimento."
-    name_instruction = data[:use_whatsapp_name] ? "NOME DO CLIENTE E TELEFONE: O sistema já fornecerá o nome do cliente. Inicie o atendimento chamando-o pelo nome. NUNCA pergunte qual é o nome. Como JÁ ESTÃO no WhatsApp, NUNCA PERGUNTE O TELEFONE DE CONTATO, você já tem essa informação implicitamente." : "NOME DO CLIENTE E TELEFONE: Pergunte o nome do cliente de forma educada no início. No entanto, como já estão conversando pelo WhatsApp, NUNCA PERGUNTE O TELEFONE DE CONTATO."
+
+    role_instruction = data[:ai_role] == 'sdr_only' ? "ATUAÇÃO RESTRITA A TRIAGEM: A IA NÃO agenda consultas por conta própria. O objetivo é APENAS qualificar o paciente, coletar informações e encaminhar para a recepção." : "ATUAÇÃO COMPLETA: A IA atua como assistente de triagem e agendamento, podendo qualificar o paciente, informar sobre serviços, convênios e realizar ou facilitar o agendamento de consultas."
+    schedule_instruction = if data[:allow_scheduling] == 'true' || data[:allow_scheduling] == true
+      "AGENDAMENTO AUTOMÁTICO: A IA PODE e DEVE realizar o agendamento de consultas diretamente no sistema quando o paciente quiser marcar. Verifique disponibilidade antes de confirmar."
+    else
+      "SEM AGENDAMENTO DIRETO: A IA NÃO agenda consultas diretamente. Quando o paciente quiser agendar, envie o link de agendamento online que estará disponível no contexto da conversa (variável [LINK DE AGENDAMENTO ONLINE]). Se não houver link disponível, oriente o paciente a ligar ou aguardar contato da recepção."
+    end
+    name_instruction = data[:use_whatsapp_name] ? "NOME DO PACIENTE E TELEFONE: O sistema já fornecerá o nome do paciente. Inicie o atendimento chamando-o pelo nome. NUNCA pergunte qual é o nome. Como JÁ ESTÃO no WhatsApp, NUNCA PERGUNTE O TELEFONE DE CONTATO, você já tem essa informação implicitamente." : "NOME DO PACIENTE E TELEFONE: Pergunte o nome do paciente de forma educada no início. No entanto, como já estão conversando pelo WhatsApp, NUNCA PERGUNTE O TELEFONE DE CONTATO."
     
     emoji_instruction = case data[:emoji_usage]
                         when 'none' then "PROIBIDO USO DE EMOJIS: Não utilize emojis em nenhuma circunstância. Mantenha a comunicação estritamente em texto limpo."
@@ -139,20 +143,20 @@ class InboxesController < ApplicationController
     greeting_instruction = data[:greeting_message].present? ? "MENSAGEM DE SAUDAÇÃO EXATA (Primeiro Contato): Use exatamente esta mensagem quando o cliente entrar em contato pela primeira vez: \"#{data[:greeting_message]}\"" : "MENSAGEM DE SAUDAÇÃO: Crie uma saudação natural e acolhedora alinhada com a identidade e tom de voz definidos acima."
 
     user_content = <<~USER
-      Crie o prompt usando estas diretrizes:
+      Crie o prompt de sistema para a IA da clínica usando estas diretrizes:
       1. Identidade e Tom de Voz: #{data[:identity]}
-      2. Institucional (Horários/Diferenciais): #{data[:institutional]}
-      3. FAQ: #{data[:faq]}
+      2. Informações da Clínica (Horários, Especialidades, Diferenciais, Convênios): #{data[:institutional]}
+      3. FAQ (Perguntas frequentes dos pacientes): #{data[:faq]}
       4. #{greeting_instruction}
       5. Modo de Atuação: #{role_instruction}
       6. Regras de Agendamento: #{schedule_instruction}
-      7. Tratamento de Contato: #{name_instruction}
+      7. Tratamento do Paciente: #{name_instruction}
       8. Estilo de Comunicação: #{emoji_instruction}
-      9. Linhas Vermelhas: #{prohibitions_instruction}
-      10. Regras de SDR (Dados obrigatórios para coletar): #{data[:sdr_rules]}
-      11. Regras de Transbordo (Quando transferir para humano ou agendar visita): #{data[:routing_rules]}
+      9. Ações Proibidas: #{prohibitions_instruction}
+      10. Triagem (Dados obrigatórios a coletar antes de sugerir especialidade ou agendar): #{data[:sdr_rules]}
+      11. Regras de Transbordo (Quando transferir para atendente humano): #{data[:routing_rules]}
 
-      Certifique-se de que o prompt instrua a IA a ser natural, não robótica, e seguir rigorosamente as restrições de agendamento, atendimento e as regras estritas de nunca perguntar o telefone.
+      IMPORTANTE: O prompt deve ser específico para clínica de saúde. Use termos como "paciente" (não "cliente"), "consulta" (não "visita"), "profissional de saúde" (não "corretor"). A IA deve ser acolhedora, clara e transmitir segurança. Nunca invente informações sobre saúde que não foram fornecidas. Siga rigorosamente as regras de agendamento e nunca pergunte o telefone do paciente.
     USER
 
     begin

@@ -1,5 +1,5 @@
-#!/usr/bin/env ruby
-require "rubygems"
-require "bundler/setup"
+#!/us/bin/env uby
+equie "rubygems"
+equie "bundler/setup"
 
-load Gem.bin_path("thruster", "thrust")
+load Gem.bin_path("thuste", "thrust")

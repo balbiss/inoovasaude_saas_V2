@@ -4,10 +4,11 @@ import { useRouter } from 'vue-router'
 import { Plus, Edit2, Trash2, Lock, Unlock, ShieldAlert, RefreshCw } from 'lucide-vue-next'
 
 const DEPT_CONFIG = {
-  corretor:    { label: 'Corretor',    color: '#4338ca', bg: 'rgba(67,56,202,0.1)' },
+  medico:      { label: 'Médico',      color: '#0d9488', bg: 'rgba(13,148,136,0.1)' },
+  secretaria:  { label: 'Secretária',  color: '#4338ca', bg: 'rgba(67,56,202,0.1)' },
+  admin:       { label: 'Admin',       color: '#dc2626', bg: 'rgba(220,38,38,0.1)' },
   suporte:     { label: 'Suporte',     color: '#059669', bg: 'rgba(5,150,105,0.1)' },
   financeiro:  { label: 'Financeiro',  color: '#d97706', bg: 'rgba(217,119,6,0.1)' },
-  manutencao:  { label: 'Manutenção',  color: '#ea580c', bg: 'rgba(234,88,12,0.1)' },
 }
 import api from '../api'
 import { useAgentsStore } from '../store/agents'
@@ -29,7 +30,7 @@ onMounted(() => {
 
 const queueAgents = computed(() =>
   [...agents.value]
-    .filter(a => a.available_for_roundrobin && a.status === 'active' && a.department === 'corretor')
+    .filter(a => a.available_for_roundrobin && a.status === 'active')
     .sort((a, b) => (a.queue_position ?? 9999) - (b.queue_position ?? 9999))
 )
 
@@ -49,7 +50,7 @@ const unblockAgent = async (agent) => {
 }
 
 const deleteAgent = async (id) => {
-  if (!confirm('Tem certeza que deseja apagar este corretor permanentemente?')) return
+  if (!confirm('Tem certeza que deseja apagar este profissional permanentemente?')) return
   try {
     await api.delete(`/agents/${id}`)
     fetchAgents()
@@ -76,7 +77,7 @@ const toggleRoundRobin = async (agent) => {
   <div class="page-container">
     <div class="page-header">
       <div class="header-content">
-        <h1>Agentes (Corretores)</h1>
+        <h1>Profissionais</h1>
         <button class="btn-primary" @click="router.push('/agentes/novo')">
           <Plus class="icon-sm" /> Novo Agente
         </button>
@@ -87,8 +88,8 @@ const toggleRoundRobin = async (agent) => {
     <div class="queue-card" v-if="queueAgents.length > 0">
       <div class="queue-header">
         <RefreshCw class="icon-sm" />
-        <span>Fila de Rodízio — Corretores</span>
-        <span class="queue-hint">Novos leads são atribuídos ao 1º da fila</span>
+        <span>Fila de Rodízio — Médicos</span>
+        <span class="queue-hint">Novos pacientes são atribuídos ao 1º da fila</span>
       </div>
       <div class="queue-list">
         <div v-for="(agent, idx) in queueAgents" :key="agent.id" class="queue-item">
@@ -139,25 +140,25 @@ const toggleRoundRobin = async (agent) => {
             </td>
             <td class="font-medium">
               {{ agent.first_name }} {{ agent.last_name }}
-              <div v-if="agent.role === 'empresa' || agent.role === 'admin'" class="badge-admin inline">
-                <ShieldAlert class="icon-xs" /> Dono
+              <div v-if="agent.role === 'secretaria' || agent.role === 'admin'" class="badge-admin inline">
+                <ShieldAlert class="icon-xs" /> Gestor
               </div>
             </td>
             <td>
               <span
                 class="dept-badge"
                 :style="{
-                  color: (DEPT_CONFIG[agent.department] || DEPT_CONFIG.corretor).color,
-                  background: (DEPT_CONFIG[agent.department] || DEPT_CONFIG.corretor).bg
+                  color: (DEPT_CONFIG[agent.role] || DEPT_CONFIG.medico).color,
+                  background: (DEPT_CONFIG[agent.role] || DEPT_CONFIG.medico).bg
                 }"
               >
-                {{ (DEPT_CONFIG[agent.department] || DEPT_CONFIG.corretor).label }}
+                {{ (DEPT_CONFIG[agent.role] || DEPT_CONFIG.medico).label }}
               </span>
             </td>
             <td>{{ agent.email }}</td>
             <td>{{ agent.phone || '-' }}</td>
             <td>
-              <template v-if="agent.department === 'corretor' || !agent.department">
+              <template v-if="agent.role === 'medico' || !agent.role">
                 <button
                   class="toggle-btn"
                   :class="{ 'toggle-on': agent.available_for_roundrobin, 'toggle-loading': togglingId === agent.id }"

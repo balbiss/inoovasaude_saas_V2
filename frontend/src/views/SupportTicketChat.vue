@@ -39,7 +39,7 @@ const sendMessage = async () => {
     
     messages.value.push({
       ...response.data,
-      user: { name: 'Você', role: 'empresa' } // optimistically add
+      user: { name: 'Você', role: 'secretaria' } // optimistically add
     })
     
     // Update ticket status to open if it was resolved

@@ -16,7 +16,8 @@ class Contact < ApplicationRecord
   def broadcast_contact_update
     ActionCable.server.broadcast("conversations_channel", {
       event: 'contact_updated',
-      contact_id: id
+      contact_id: id,
+      avatar_url: avatar_url
     })
   end
 end

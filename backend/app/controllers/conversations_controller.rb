@@ -3,7 +3,7 @@ class ConversationsController < ApplicationController
 
   def index
     page  = (params[:page] || 1).to_i
-    limit = (params[:per_page] || 100).to_i.clamp(1, 500)
+    limit = (params[:per_page] || 50).to_i.clamp(1, 500)
 
     base = current_user.account.conversations
 
@@ -331,7 +331,7 @@ class ConversationsController < ApplicationController
           status: msg.status,
           agentName: msg.sender_type == 'User' ? (users_hash[msg.sender_id]&.first_name || 'Agente') : nil,
           isPrivate: msg.is_private,
-          attachmentUrl: msg.attachment.attached? ? Rails.application.routes.url_helpers.rails_blob_url(msg.attachment, host: ENV['API_HOST'] || 'http://localhost:3000') : nil,
+          attachmentUrl: msg.attachment.attached? ? Rails.application.routes.url_helpers.rails_blob_url(msg.attachment, host: ENV['PUBLIC_URL'] || 'http://localhost:3000') : nil,
           attachmentType: msg.attachment.attached? ? msg.attachment.content_type : nil
         }
       end,

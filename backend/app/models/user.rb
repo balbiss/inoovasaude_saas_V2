@@ -6,7 +6,6 @@ class User < ApplicationRecord
   has_many :support_tickets
   has_many :support_ticket_messages
   has_many :contacts
-  has_many :properties
   has_many :appointments
   has_many :push_subscriptions, dependent: :destroy
   has_many :inbox_members, dependent: :destroy
@@ -18,7 +17,7 @@ class User < ApplicationRecord
          :recoverable, :rememberable, :validatable,
          :jwt_authenticatable, jwt_revocation_strategy: self
 
-  enum :role, { atendente: 0, empresa: 1, admin: 2 }
+  enum :role, { medico: 0, secretaria: 1, admin: 2 }
   def active_for_authentication?
     super && status == 'active'
   end

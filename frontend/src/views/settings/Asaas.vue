@@ -82,11 +82,10 @@ const removeKey = async () => {
 }
 
 const departments = [
-  { label: 'Financeiro',  allowed: true  },
-  { label: 'Suporte',     allowed: true  },
-  { label: 'Manutenção',  allowed: true  },
-  { label: 'Dono / Admin', allowed: true  },
-  { label: 'Corretor',    allowed: false },
+  { label: 'Financeiro',       allowed: true  },
+  { label: 'Suporte',          allowed: true  },
+  { label: 'Secretaria/Admin', allowed: true  },
+  { label: 'Médico',           allowed: false },
 ]
 </script>
 

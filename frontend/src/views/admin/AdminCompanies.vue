@@ -150,7 +150,7 @@ const blockCompany = async (company) => {
 const deleteCompany = async (company) => {
   const result = await Swal.fire({
     title: `Excluir PERMANENTEMENTE ${company.name}?`,
-    text: "Todos os contatos, conversas e imóveis dessa empresa serão apagados para sempre. Esta ação não pode ser desfeita!",
+    text: "Todos os pacientes, conversas e dados dessa clínica serão apagados para sempre. Esta ação não pode ser desfeita!",
     icon: 'error',
     showCancelButton: true,
     confirmButtonColor: '#dc2626',
@@ -238,7 +238,7 @@ const deleteCompany = async (company) => {
             <h4>Dados da Empresa (SaaS)</h4>
             <div class="form-group">
               <label>Nome da Empresa</label>
-              <input type="text" v-model="formData.account.name" required placeholder="Ex: Imobiliária Silva" />
+              <input type="text" v-model="formData.account.name" required placeholder="Ex: Clínica Bem-Estar" />
             </div>
             
             <div class="form-row">
@@ -274,7 +274,7 @@ const deleteCompany = async (company) => {
 
             <div class="form-group">
               <label>E-mail de Login</label>
-              <input type="email" v-model="formData.user.email" required placeholder="joao@imobiliaria.com" />
+              <input type="email" v-model="formData.user.email" required placeholder="medico@clinica.com" />
             </div>
 
             <div class="form-group">

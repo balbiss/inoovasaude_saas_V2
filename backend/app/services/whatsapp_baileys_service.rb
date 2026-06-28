@@ -158,19 +158,18 @@ class WhatsappBaileysService
   end
 
   def fetch_profile_picture_url(jid)
-    uri = URI.parse("#{@api_url}/connections/#{@phone_number}/profile-picture-url?jid=#{CGI.escape(jid)}")
-    request = Net::HTTP::Get.new(uri)
-    request["x-api-key"] = @api_key
-    
-    req_options = {
-      use_ssl: uri.scheme == "https",
-      open_timeout: 5,
-      read_timeout: 10
-    }
+    api_uri = URI.parse(@api_url)
+    path = "/connections/#{@phone_number}/profile-picture-url?jid=#{CGI.escape(jid)}"
 
-    response = Net::HTTP.start(uri.hostname, uri.port, req_options) do |http|
-      http.request(request)
-    end
+    http = Net::HTTP.new(api_uri.host, api_uri.port)
+    http.use_ssl = api_uri.scheme == "https"
+    http.open_timeout = 5
+    http.read_timeout = 20
+
+    request = Net::HTTP::Get.new(path)
+    request["x-api-key"] = @api_key
+
+    response = http.start { |h| h.request(request) }
 
     if response.is_a?(Net::HTTPSuccess)
       data = JSON.parse(response.body)
@@ -187,24 +186,9 @@ class WhatsappBaileysService
   end
 
   def connected?
-    # Cache tem prioridade (escrito pelo webhook connection.update)
+    # Status é definido SOMENTE pelo webhook connection.update enviado pelo Baileys
     cached = Rails.cache.read("inbox:#{@inbox.id}:status")
-    return cached == 'open' unless cached.nil?
-
-    # Cache vazio (ex: após restart) — consulta o Baileys API diretamente
-    begin
-      uri = URI.parse("#{@api_url}/connections/#{@phone_number}/presence")
-      req = Net::HTTP::Patch.new(uri)
-      req.content_type = "application/json"
-      req["x-api-key"] = @api_key
-      req.body = JSON.dump({ "type" => "available" })
-      res = Net::HTTP.start(uri.hostname, uri.port, open_timeout: 3, read_timeout: 5) { |h| h.request(req) }
-      is_connected = res.is_a?(Net::HTTPSuccess)
-      Rails.cache.write("inbox:#{@inbox.id}:status", is_connected ? 'open' : 'close', expires_in: 2.minutes)
-      is_connected
-    rescue StandardError
-      false
-    end
+    cached == 'open'
   end
 
   # Sends raw binary data as a document (e.g. boleto PDF from Asaas)

@@ -42,7 +42,9 @@ const handleLogin = async () => {
       }
     })
 
-    const token = response.headers.authorization
+    const token = response.data?.token
+      ? `Bearer ${response.data.token}`
+      : response.headers.authorization
     if (token) {
       localStorage.setItem('auth_token', token)
     }
@@ -87,12 +89,12 @@ const handleLogin = async () => {
     <div class="login-hero">
       <div class="hero-overlay"></div>
       <div class="hero-content">
-        <h1 class="hero-brand">{{ brandMain }}<span>{{ brandAccent }}</span></h1>
-        <p class="hero-tagline">Gerencie seus leads, imóveis e equipe em um só lugar — com IA trabalhando 24h para você.</p>
+        <h1 class="hero-brand"><span class="brand-p1">Inoova</span><span class="brand-p2">Saúde</span></h1>
+        <p class="hero-tagline">Gerencie seus pacientes, agendamentos e equipe em um só lugar — com IA trabalhando 24h para você.</p>
         <div class="hero-badges">
           <span class="hero-badge">IA no WhatsApp</span>
-          <span class="hero-badge">Rodízio automático</span>
-          <span class="hero-badge">Portais integrados</span>
+          <span class="hero-badge">Confirmação automática</span>
+          <span class="hero-badge">Prontuário digital</span>
         </div>
       </div>
     </div>
@@ -102,7 +104,7 @@ const handleLogin = async () => {
       <div class="auth-card">
         <div class="auth-header">
           <h2>Bem-vindo de volta</h2>
-          <p>Acesse sua conta para gerenciar seus imóveis e leads.</p>
+          <p>Acesse sua conta para gerenciar seus pacientes e agendamentos.</p>
         </div>
 
         <form @submit.prevent="handleLogin" class="auth-form">
@@ -167,7 +169,7 @@ const handleLogin = async () => {
 .login-hero {
   flex: 1;
   position: relative;
-  background: url('/login-bg.jpg') center center / cover no-repeat;
+  background: url('/login-bg.png') center center / cover no-repeat;
   display: flex;
   align-items: flex-end;
   padding: 3rem;
@@ -197,7 +199,8 @@ const handleLogin = async () => {
   font-weight: 800;
   margin-bottom: 1rem;
   letter-spacing: -0.03em;
-  span { color: #60a5fa; }
+  .brand-p1 { color: #ffffff; }
+  .brand-p2 { color: #0d9488; }
 }
 
 .hero-tagline {

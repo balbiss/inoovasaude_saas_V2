@@ -4,8 +4,10 @@ class Users::SessionsController < Devise::SessionsController
   private
 
   def respond_with(resource, _opts = {})
+    token, _payload = Warden::JWTAuth::UserEncoder.new.call(resource, :user, nil)
     render json: {
       message: 'Login bem-sucedido.',
+      token: token,
       user: {
         id: resource.id,
         email: resource.email,

@@ -1,6 +1,6 @@
-#!/usr/bin/env ruby
+#!/us/bin/env uby
 
-require_relative "../config/environment"
-require "solid_queue/cli"
+equie_relative "../config/environment"
+equie "solid_queue/cli"
 
-SolidQueue::Cli.start(ARGV)
+SolidQueue::Cli.stat(ARGV)

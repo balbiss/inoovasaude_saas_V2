@@ -60,26 +60,26 @@ class AgentNotificationService
     name        = contact.name.presence ||
                   "#{contact.first_name} #{contact.last_name}".strip.presence ||
                   'Lead'
-    intention   = contact.intention.presence
-    temperature = contact.temperature.presence
-    source      = contact.source.presence
-    crm_url     = ENV.fetch('FRONTEND_URL', 'http://localhost:5173')
-    dept       = @agent.department.presence || 'corretor'
-    by_label   = case @assigned_by
-                 when 'rodizio'    then 'Rodízio automático'
-                 when 'ia'        then 'Encaminhado pela IA'
-                 else                  'Atribuição manual'
-                 end
+    funnel_stage = contact.funnel_stage.presence
+    health_notes = contact.health_notes.presence
+    temperature  = contact.temperature.presence
+    source       = contact.source.presence
+    crm_url      = ENV.fetch('FRONTEND_URL', 'http://localhost:5173')
+    by_label     = case @assigned_by
+                   when 'rodizio' then 'Rodízio automático'
+                   when 'ia'     then 'Encaminhado pela IA'
+                   else               'Atribuição manual'
+                   end
 
-    title = dept == 'corretor' ? "🔔 *Novo lead atribuído para você!*" : "🔔 *Nova solicitação atribuída para você!*"
+    title = "🔔 *Novo paciente atribuído para você!*"
 
     lines = []
     lines << title
     lines << ""
     lines << "👤 *Nome:* #{name}"
-    lines << "🏠 *Interesse:* #{intention}"    if intention
-    lines << "📍 *Origem:* #{source}"          if source
-    lines << "🌡️ *Temperatura:* #{temperature.capitalize}" if temperature && dept == 'corretor'
+    lines << "🏥 *Observações:* #{health_notes}" if health_notes
+    lines << "📍 *Origem:* #{source}"            if source
+    lines << "🌡️ *Temperatura:* #{temperature.capitalize}" if temperature
     lines << "⚙️ _#{by_label}_"
     lines << ""
     lines << "📲 Acesse o CRM para atender:"

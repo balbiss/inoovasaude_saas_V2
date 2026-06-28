@@ -67,27 +67,27 @@ const closeModal = () => {
 
       <div class="modal-body scrollable">
         <p class="modal-desc">
-          Preencha os detalhes da sua imobiliária abaixo. A nossa inteligência artificial vai escrever um prompt de comportamento <strong>perfeito</strong> e à prova de falhas para sua secretária virtual.
+          Preencha os detalhes da sua clínica abaixo. A nossa inteligência artificial vai escrever um prompt de comportamento <strong>perfeito</strong> e à prova de falhas para sua secretária virtual.
         </p>
 
         <div class="form-group">
           <label>1. Identidade e Tom de Voz</label>
-          <textarea v-model="form.identity" placeholder="Ex: Somos a Imobiliária Alpha. A IA deve se chamar Ana, ter um tom amigável, prestativo e persuasivo, focado em fechar negócios."></textarea>
+          <textarea v-model="form.identity" placeholder="Ex: Somos a Clínica Saúde Total. A IA deve se chamar Ana, ter um tom acolhedor, empático e profissional, focado em ajudar o paciente."></textarea>
         </div>
 
         <div class="form-group">
           <label>2. Institucional (Regras e Diferenciais)</label>
-          <textarea v-model="form.institutional" placeholder="Ex: Nosso horário é seg a sex das 9h às 18h. Nosso grande diferencial é aprovar financiamento em 24h. Trabalhamos apenas com imóveis de luxo e não fazemos locação."></textarea>
+          <textarea v-model="form.institutional" placeholder="Ex: Nosso horário é seg a sex das 8h às 18h. Atendemos pelo plano Unimed e particular. Especialidades: cardiologia e ortopedia."></textarea>
         </div>
 
         <div class="form-group">
           <label>3. FAQ (Perguntas Frequentes)</label>
-          <textarea v-model="form.faq" placeholder="Ex: - Aceita pet? Sim.&#10;- Aceita fiador? Não, apenas seguro fiança.&#10;- Faz minha casa minha vida? Não."></textarea>
+          <textarea v-model="form.faq" placeholder="Ex: - Atende pelo plano? Sim, Unimed e Hapvida.&#10;- Precisa de encaminhamento? Não para consultas particulares.&#10;- Tem estacionamento? Sim, gratuito."></textarea>
         </div>
 
         <div class="form-group">
           <label>4. Mensagem de Saudação (Primeiro Contato)</label>
-          <textarea v-model="form.greeting_message" placeholder="Ex: Olá! 👋 Bem-vindo à Imobiliária Alpha! Sou a Ana, sua assistente virtual. Estou aqui para te ajudar a encontrar o imóvel dos seus sonhos. Como posso te ajudar hoje?"></textarea>
+          <textarea v-model="form.greeting_message" placeholder="Ex: Olá! 👋 Bem-vindo à Clínica Saúde Total! Sou a Ana, assistente virtual. Estou aqui para te ajudar com agendamentos e dúvidas. Como posso te ajudar?"></textarea>
           <small class="help-hint">Esta é a mensagem exata que a IA enviará quando um novo cliente entrar em contato pela primeira vez. Se não preencher, a IA criará uma saudação natural com base na identidade definida.</small>
         </div>
 
@@ -95,8 +95,8 @@ const closeModal = () => {
           <div class="form-group">
             <label>5. Modo de Atuação da IA</label>
             <select v-model="form.ai_role" class="form-select">
-              <option value="sdr_and_sales">Completo (Qualifica, Oferta Imóveis e Agenda)</option>
-              <option value="sdr_only">Apenas Pré-venda/SDR (Coleta dados e transfere)</option>
+              <option value="sdr_and_sales">Completo (Qualifica, Informa Serviços e Agenda)</option>
+              <option value="sdr_only">Apenas Triagem (Coleta dados e transfere para humano)</option>
             </select>
           </div>
 
@@ -105,7 +105,7 @@ const closeModal = () => {
               <input type="checkbox" v-model="form.allow_scheduling" class="toggle-checkbox">
               <span class="toggle-text">IA pode fazer o Agendamento Automático?</span>
             </label>
-            <span class="help-text" v-if="!form.allow_scheduling">O agendamento será feito apenas pelo corretor humano após a transferência.</span>
+            <span class="help-text" v-if="!form.allow_scheduling">O agendamento será feito pela secretária após a transferência.</span>
             <span class="help-text" v-else>A IA verificará datas e marcará no sistema.</span>
           </div>
         </div>
@@ -132,7 +132,7 @@ const closeModal = () => {
 
         <div class="form-group">
           <label>6. Regras de SDR (Pré-venda)</label>
-          <textarea v-model="form.sdr_rules" placeholder="Ex: Obrigatório coletar o Nome, Telefone, Bairro de interesse e se o cliente já tem aprovação na Caixa Econômica antes de enviar qualquer imóvel."></textarea>
+          <textarea v-model="form.sdr_rules" placeholder="Ex: Obrigatório coletar o Nome, Telefone e queixa principal antes de sugerir qualquer especialidade ou agendar consulta."></textarea>
         </div>
 
         <div class="form-group">
@@ -142,7 +142,7 @@ const closeModal = () => {
 
         <div class="form-group">
           <label>8. Restrições e Proibições (O que a IA NUNCA deve fazer)</label>
-          <textarea v-model="form.prohibited_actions" placeholder="Ex: Nunca prometer descontos. Nunca dizer que não sabemos de algo, diga que vai consultar o corretor. Nunca passar endereço exato sem agendar."></textarea>
+          <textarea v-model="form.prohibited_actions" placeholder="Ex: Nunca dar diagnóstico. Nunca recomendar medicamentos. Nunca confirmar disponibilidade de horário sem verificar na agenda."></textarea>
         </div>
       </div>
 

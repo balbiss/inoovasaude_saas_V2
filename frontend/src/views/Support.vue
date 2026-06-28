@@ -81,7 +81,7 @@ const sendMessage = async () => {
     
     messages.value.push({
       ...response.data,
-      user: { name: 'Você', role: 'empresa' } // optimistically add
+      user: { name: 'Você', role: 'secretaria' } // optimistically add
     })
     
     // Se o ticket estava fechado, ele volta para "Aberto" (0) no backend
@@ -124,7 +124,7 @@ const closeTicket = async () => {
           id: Date.now(),
           body: "Chamado encerrado pelo usuário.",
           created_at: new Date().toISOString(),
-          user: { name: 'Você', role: 'empresa' }
+          user: { name: 'Você', role: 'secretaria' }
         })
         scrollToBottom()
       }

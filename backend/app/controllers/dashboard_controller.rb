@@ -42,12 +42,12 @@ class DashboardController < ApplicationController
     with_human = com_atendente_tag ? conv_scope.joins(:conversation_tags)
       .where(conversation_tags: { tag_id: com_atendente_tag.id }).count : 0
 
-    # Appointments: batch status into GROUP BY
+    # Appointments: batch status into GROUP BY, derive total from it (no extra query)
     appt_status   = appt_scope.group(:status).count
-    appt_total    = appt_scope.count
+    appt_total    = appt_status.values.sum
     appt_today    = appt_scope.where(appointment_date: today).count
-    appt_upcoming = appt_scope.where('appointment_date >= ?', today).where.not(status: 'cancelled').count
-    appt_done     = appt_status['completed'] || 0
+    appt_upcoming = appt_scope.where('appointment_date >= ?', today).where.not(status: 'cancelado').count
+    appt_done     = appt_status['compareceu'] || 0
 
     leads_by_source = contacts_scope.where.not(source: [nil, '']).group(:source).count
 
@@ -76,7 +76,7 @@ class DashboardController < ApplicationController
       : account.conversations.where(user_id: uid, created_at: today.beginning_of_day..today.end_of_day)
 
     today_assigned_leads = today_conv_scope
-      .includes(:contact)
+      .includes(:contact, :user)
       .order(created_at: :desc)
       .limit(20)
       .map do |conv|
@@ -88,7 +88,7 @@ class DashboardController < ApplicationController
           contact_phone:   c.phone,
           funnel_stage:    c.funnel_stage,
           health_notes:    c.health_notes,
-          assigned_to:     conv.user_id == uid ? nil : account.users.find_by(id: conv.user_id)&.first_name,
+          assigned_to:     conv.user_id == uid ? nil : conv.user&.first_name,
           created_at:      conv.created_at
         }
       end.compact
