@@ -385,12 +385,14 @@ const clearSelectedFile = () => {
   }
 }
 
-const handleSendMessage = () => {
+const handleSendMessage = async () => {
   if (newMessageText.value.trim() || selectedFile.value) {
-    store.sendMessage(newMessageText.value, isPrivateMessage.value, selectedFile.value)
+    const wasPrivate = isPrivateMessage.value
+    await store.sendMessage(newMessageText.value, wasPrivate, selectedFile.value)
     newMessageText.value = ''
     clearSelectedFile()
     scrollToBottom()
+    if (!wasPrivate) fetchAiStatus()
   }
 }
 

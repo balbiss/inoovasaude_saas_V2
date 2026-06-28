@@ -29,6 +29,10 @@ class MessagesController < ApplicationController
         rescue StandardError => e
           Rails.logger.error("Failed to send message via Baileys: #{e.message}")
         end
+
+        # Pausa a IA por 30 minutos quando um humano responde
+        jid = conversation.contact.jid.presence || conversation.contact.phone
+        Rails.cache.write("ai_paused_#{conversation.inbox_id}_#{jid}", Time.current.to_i, expires_in: 30.minutes) if jid.present?
       end
 
       # Optionally render just the new message, but we can also just return success
