@@ -159,7 +159,8 @@ class AiAssistantService
     extra = @extra_context.present? ? "\n\n[CONTEXTO EXTRA]: #{@extra_context}" : ""
 
     booking_info = if @inbox.account.booking_enabled? && @inbox.account.booking_url.present?
-      "\n[LINK DE AGENDAMENTO ONLINE]: #{@inbox.account.booking_url} — Se o paciente quiser agendar por conta propria, voce pode enviar este link. Ele abre uma pagina onde o paciente escolhe o profissional, data, horario e preenche os proprios dados."
+      url = @inbox.account.booking_url
+      "\n\n[AGENDAMENTO ONLINE ATIVADO]: #{url}\nSEMPRE QUE O PACIENTE QUISER AGENDAR: envie este link imediatamente sem chamar list_professionals_and_services. Diga: 'Pode agendar por este link: #{url} — la voce escolhe o profissional, data e horario!' NAO tente listar profissionais para fins de agendamento."
     else
       ""
     end
@@ -407,6 +408,13 @@ class AiAssistantService
     when "list_professionals_and_services"
       professionals = account.professionals.where(status: 'active').order(:name)
       services      = account.services.where(status: 'active').order(:name)
+
+      if professionals.empty?
+        booking_url = account.booking_url if account.booking_enabled?
+        return booking_url.present? \
+          ? "NENHUM PROFISSIONAL CADASTRADO. Use o link de agendamento: #{booking_url} — envie ao paciente para ele agendar sozinho." \
+          : "Nenhum profissional cadastrado na clinica no momento. Informe o paciente e peca para tentar mais tarde."
+      end
 
       day_order  = %w[segunda terca quarta quinta sexta sabado domingo]
       day_labels = {
