@@ -82,7 +82,7 @@ services:
   saude_backend:
     image: ghcr.io/balbiss/inoovasaude-backend:latest
     command: >
-      bash -c "until bundle exec rails db:prepare; do echo 'Aguardando banco...'; sleep 5; done && bundle exec rails db:migrate:cache && bundle exec rails db:migrate:queue && bundle exec rails db:migrate:cable && bundle exec rails server -b 0.0.0.0 -p 80"
+      bash -c "until bundle exec rails db:prepare; do echo 'Aguardando banco...'; sleep 5; done && bundle exec rails server -b 0.0.0.0 -p 80"
     environment:
       - RAILS_ENV=production
       - PGHOST=saude_db
@@ -142,7 +142,7 @@ services:
 
   saude_worker:
     image: ghcr.io/balbiss/inoovasaude-backend:latest
-    command: bash -c "sleep 40 && bundle exec rails solid_queue:start"
+    command: bash -c "sleep 60 && bundle exec rails solid_queue:start"
     environment:
       - RAILS_ENV=production
       - PGHOST=saude_db
