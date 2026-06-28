@@ -1,0 +1,15 @@
+# Força LF para todos os arquivos de texto
+* text=auto eol=lf
+
+# Arquivos binários
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.pdf binary
+
+# Scripts executáveis — sempre LF
+bin/* text eol=lf
+*.sh text eol=lf
+*.rb text eol=lf
