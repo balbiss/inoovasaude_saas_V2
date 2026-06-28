@@ -150,7 +150,7 @@ module Webhooks
         next if Message.exists?(source_id: source_id)
 
         # Encontra ou cria a conta (account) associada
-        account = inbox.conversations.first&.account || Account.first || Account.create!(name: 'Default')
+        account = inbox.account
 
         # Find or create contact
         contact = Contact.find_or_create_by(phone: contact_phone_formatted, account_id: account.id) do |c|
