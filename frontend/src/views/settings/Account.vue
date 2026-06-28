@@ -41,17 +41,14 @@
           <h2 class="section-title">Regras de Agendamento</h2>
           <p class="section-description">Controle como os agendamentos podem ser feitos para os pacientes.</p>
 
-          <div class="form-group toggle-group">
-            <label class="toggle-label">
-              <input type="checkbox" v-model="blockDoubleBooking" class="toggle-input" />
-              <span class="toggle-track">
-                <span class="toggle-thumb"></span>
-              </span>
-              <span class="toggle-text">
-                <strong>Bloquear consulta duplicada</strong><br>
-                <small>Paciente com consulta agendada ou confirmada não pode marcar outra enquanto ela não for finalizada ou cancelada.</small>
-              </span>
-            </label>
+          <div class="form-group booking-toggle-wrap" @click="blockDoubleBooking = !blockDoubleBooking" style="cursor:pointer; display:flex; align-items:flex-start; gap:12px;">
+            <span class="booking-track" :style="{ background: blockDoubleBooking ? '#0d9488' : '#d1d5db' }">
+              <span class="booking-thumb" :style="{ left: blockDoubleBooking ? '21px' : '3px' }"></span>
+            </span>
+            <span class="toggle-text">
+              <strong>Bloquear consulta duplicada</strong><br>
+              <small>Paciente com consulta agendada ou confirmada não pode marcar outra enquanto ela não for finalizada ou cancelada.</small>
+            </span>
           </div>
 
           <div class="form-group" style="margin-top:20px">
