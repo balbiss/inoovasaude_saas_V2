@@ -72,10 +72,70 @@ const profScheduleSummary = (prof) => {
 const morningSlots   = computed(() => slots.value.filter(s => parseInt(s) < 12))
 const afternoonSlots = computed(() => slots.value.filter(s => parseInt(s) >= 12))
 
-const minDate = computed(() => {
-  const d = new Date(); d.setDate(d.getDate() + 1)
-  return d.toISOString().split('T')[0]
+const calYear   = ref(new Date().getFullYear())
+const calMonth  = ref(new Date().getMonth())
+const monthNames = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro']
+const dowMap = { 0:'domingo', 1:'segunda', 2:'terca', 3:'quarta', 4:'quinta', 5:'sexta', 6:'sabado' }
+
+const workingDaySet = computed(() => {
+  const s = new Set()
+  const sched = selectedProf.value?.schedule
+  if (!sched) return s
+  Object.entries(dowMap).forEach(([dow, name]) => {
+    if (sched[name]?.active) s.add(Number(dow))
+  })
+  return s
 })
+
+const calDays = computed(() => {
+  const first = new Date(calYear.value, calMonth.value, 1)
+  const last  = new Date(calYear.value, calMonth.value + 1, 0)
+  const days  = []
+  for (let i = 0; i < first.getDay(); i++) days.push(null)
+  for (let d = 1; d <= last.getDate(); d++) days.push(new Date(calYear.value, calMonth.value, d))
+  return days
+})
+
+const canPrevMonth = computed(() => {
+  const now = new Date()
+  return calYear.value > now.getFullYear() || calMonth.value > now.getMonth()
+})
+
+const isDateDisabled = (date) => {
+  if (!date) return true
+  const tomorrow = new Date(); tomorrow.setDate(tomorrow.getDate() + 1); tomorrow.setHours(0, 0, 0, 0)
+  if (date < tomorrow) return true
+  return !workingDaySet.value.has(date.getDay())
+}
+
+const isDateSelected = (date) => {
+  if (!date || !selectedDate.value) return false
+  const [y, m, d] = selectedDate.value.split('-').map(Number)
+  return date.getFullYear() === y && date.getMonth() + 1 === m && date.getDate() === d
+}
+
+const isToday = (date) => {
+  if (!date) return false
+  const t = new Date()
+  return date.getFullYear() === t.getFullYear() && date.getMonth() === t.getMonth() && date.getDate() === t.getDate()
+}
+
+const selectCalDate = (date) => {
+  if (isDateDisabled(date)) return
+  const y = date.getFullYear()
+  const m = String(date.getMonth() + 1).padStart(2, '0')
+  const d = String(date.getDate()).padStart(2, '0')
+  selectedDate.value = `${y}-${m}-${d}`
+  onDateChange()
+}
+
+const prevMonth = () => {
+  if (!canPrevMonth.value) return
+  if (calMonth.value === 0) { calMonth.value = 11; calYear.value-- } else calMonth.value--
+}
+const nextMonth = () => {
+  if (calMonth.value === 11) { calMonth.value = 0; calYear.value++ } else calMonth.value++
+}
 
 const formattedDate = computed(() => {
   if (!selectedDate.value) return ''
@@ -100,6 +160,9 @@ const selectProf = (prof) => {
   selectedDate.value    = ''
   selectedSlot.value    = ''
   slots.value           = []
+  const now = new Date()
+  calYear.value  = now.getFullYear()
+  calMonth.value = now.getMonth()
 }
 
 const goStep = (n) => { errorMsg.value = ''; step.value = n }
@@ -328,7 +391,35 @@ const stepLabels = ['Profissional', 'Data e Hora', 'Seus Dados', 'Confirmar']
           </div>
 
           <h2 class="pb-title">Selecione a data</h2>
-          <input type="date" v-model="selectedDate" :min="minDate" @change="onDateChange" class="pb-date" />
+          <div class="pb-cal">
+            <div class="pb-cal-header">
+              <button class="pb-cal-nav" @click="prevMonth" :disabled="!canPrevMonth">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="15 18 9 12 15 6"/></svg>
+              </button>
+              <span class="pb-cal-title">{{ monthNames[calMonth] }} {{ calYear }}</span>
+              <button class="pb-cal-nav" @click="nextMonth">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="9 18 15 12 9 6"/></svg>
+              </button>
+            </div>
+            <div class="pb-cal-grid">
+              <span v-for="(d, i) in ['D','S','T','Q','Q','S','S']" :key="'dow'+i" class="pb-cal-dow">{{ d }}</span>
+              <template v-for="(date, idx) in calDays" :key="'cd'+idx">
+                <span v-if="!date" class="pb-cal-cell"></span>
+                <button
+                  v-else
+                  class="pb-cal-cell pb-cal-day"
+                  :class="{
+                    'is-selected':  isDateSelected(date),
+                    'is-today':     isToday(date),
+                    'is-disabled':  isDateDisabled(date),
+                    'is-available': !isDateDisabled(date)
+                  }"
+                  :disabled="isDateDisabled(date)"
+                  @click="selectCalDate(date)"
+                >{{ date.getDate() }}</button>
+              </template>
+            </div>
+          </div>
 
           <template v-if="selectedDate">
             <div v-if="loadingSlots" class="pb-loading">
@@ -765,14 +856,47 @@ const stepLabels = ['Profissional', 'Data e Hora', 'Seus Dados', 'Confirmar']
   &:hover { background: #f0fdf9; }
 }
 
-/* ── Date ── */
-.pb-date {
-  width: 100%; padding: 0.875rem 1rem;
-  border: 1.5px solid #e2e8f0; border-radius: 10px;
-  font-size: 1rem; color: #1e293b;
-  background: white; outline: none;
-  margin-bottom: 0.75rem;
-  &:focus { border-color: #0d9488; box-shadow: 0 0 0 3px rgba(13,148,136,0.1); }
+/* ── Calendar ── */
+.pb-cal {
+  background: white; border: 1.5px solid #e2e8f0;
+  border-radius: 12px; margin-bottom: 1.25rem;
+  overflow: hidden; box-shadow: 0 1px 6px rgba(0,0,0,0.05);
+}
+.pb-cal-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 0.75rem 1rem; border-bottom: 1px solid #f1f5f9;
+}
+.pb-cal-title { font-weight: 700; font-size: 0.9rem; color: #0f172a; }
+.pb-cal-nav {
+  width: 30px; height: 30px; border-radius: 7px;
+  background: none; border: 1.5px solid #e2e8f0;
+  cursor: pointer; display: flex; align-items: center; justify-content: center;
+  transition: all 0.15s;
+  svg { width: 15px; height: 15px; color: #64748b; }
+  &:hover:not([disabled]) { border-color: #0d9488; svg { color: #0d9488; } }
+  &[disabled] { opacity: 0.3; cursor: not-allowed; }
+}
+.pb-cal-grid {
+  display: grid; grid-template-columns: repeat(7, 1fr);
+  padding: 0.5rem 0.5rem 0.75rem; gap: 2px;
+}
+.pb-cal-dow {
+  display: flex; align-items: center; justify-content: center;
+  height: 28px; font-size: 0.68rem; font-weight: 700; color: #94a3b8;
+}
+.pb-cal-cell {
+  aspect-ratio: 1; display: flex; align-items: center; justify-content: center;
+  border-radius: 8px; border: none; background: none; font-size: 0.825rem;
+}
+.pb-cal-day {
+  font-weight: 500; color: #d1d5db; cursor: default; transition: all 0.12s;
+  &.is-available {
+    color: #1e293b; cursor: pointer; background: #f8fafc;
+    &:hover { background: #ccfbf1; color: #0d9488; font-weight: 700; }
+  }
+  &.is-today.is-available { border: 2px solid #0d9488; }
+  &.is-disabled { color: #d1d5db; }
+  &.is-selected { background: #0d9488 !important; color: white !important; font-weight: 700; border: none; }
 }
 
 /* ── Slots ── */
