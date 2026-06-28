@@ -101,6 +101,7 @@ services:
       - RAILS_LOG_TO_STDOUT=true
       - RAILS_SERVE_STATIC_FILES=true
       - TZ=America/Sao_Paulo
+      - SOLID_QUEUE_IN_PUMA=true
       - SUPER_ADMIN_EMAIL=admin@inoovasaude.com.br
       - SUPER_ADMIN_PASSWORD=InoovaSaude@2025!
       - OPENAI_API_KEY=SUA_CHAVE_OPENAI_AQUI
@@ -136,41 +137,6 @@ services:
         - traefik.http.services.saude_backend.loadbalancer.server.port=3000
         - traefik.http.services.saude_backend.loadbalancer.passHostHeader=1
         - traefik.http.services.saude_backend.loadbalancer.responseForwarding.flushInterval=100ms
-
-  ## --------------------------- WORKER (JOBS) --------------------------- ##
-
-  saude_worker:
-    image: ghcr.io/balbiss/inoovasaude-backend:latest
-    command: bash -c "sleep 60 && bundle exec rails solid_queue:start"
-    environment:
-      - RAILS_ENV=production
-      - PGHOST=saude_db
-      - PGPORT=5432
-      - PGDATABASE=saude_production
-      - PGUSER=saude
-      - PGPASSWORD=oLghnDhOsJAd69ynibdD2LXAKnSr9PeGo2ytatkNWencYWn
-      - REDIS_URL=redis://:tvLSfG8S2ulZRiEoBK5U752rDTLbmBMJ77F5TSz6xFrB8@saude_redis:6379/0
-      - RAILS_MASTER_KEY=542d5df3548cfc54effbc0e8dae5b0c7
-      - SECRET_KEY_BASE=a4f19b8ae95451eb192d90edbcbda99425181ce28dfe8a86cdca2a9c0ffa63f9e3ed14f185f41b780199d60c446f80917a785e742ce64843a42d01e34e593eef
-      - BAILEYS_API_URL=http://saude_baileys:3025
-      - BAILEYS_API_KEY=inoovasaude2025
-      - OPENAI_API_KEY=SUA_CHAVE_OPENAI_AQUI
-      - RAILS_LOG_TO_STDOUT=true
-      - TZ=America/Sao_Paulo
-    volumes:
-      - saude_rails_storage:/rails/storage
-    networks:
-      - inoovawebpro
-    deploy:
-      mode: replicated
-      replicas: 1
-      placement:
-        constraints:
-          - node.role == manager
-      resources:
-        limits:
-          cpus: "1"
-          memory: 512M
 
   ## --------------------------- FRONTEND VUE --------------------------- ##
 

@@ -141,7 +141,6 @@ module Public
       )
 
       if appointment.save
-        AppointmentConfirmationJob.perform_later(appointment.id)
         ActionCable.server.broadcast('conversations_channel', {
           event: 'appointment_created',
           appointment_id: appointment.id
