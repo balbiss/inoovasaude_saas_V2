@@ -190,7 +190,7 @@ const handleRegister = async () => {
 .login-hero {
   flex: 1;
   position: relative;
-  background: url('/login-bg.png') center center / cover no-repeat;
+  background: url('/login-bg.png') top left / cover no-repeat;
   display: flex;
   align-items: flex-end;
   padding: 3rem;
